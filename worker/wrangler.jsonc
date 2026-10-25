@@ -1,0 +1,34 @@
+// Cloudflare Worker: relays gas-sponsored captures to CaptureFlag and serves the claim
+// page each robot's QR sticker opens.
+//
+// workers_dev is on: unlike pay.yakrobot.com, the claim page is meant to be public. The
+// custom domain (capture-flag.yakrobot.com) is added by the user at deploy time (W3).
+//
+// Still to come: the Relayer Durable Object (W2) — its migration must use
+// `new_sqlite_classes`, the only DO storage the Workers Free plan allows — and the
+// 15-minute balance cron (W6).
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "yakrobot-capture-flag",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-09-01",
+	"workers_dev": true,
+	"preview_urls": false,
+	// Public constants only (design W1). RELAYER_PRIVATE_KEY is `wrangler secret put` in
+	// production and `.dev.vars` (gitignored) locally — never here.
+	"vars": {
+		// Base Sepolia for the pilot; Base mainnet (8453) after the legal check (F6).
+		"CHAIN": "84532",
+		// Public endpoint, fine for the pilot. payments found mainnet.base.org rate-limits
+		// Worker egress (2026-09-16); for an event, set a provider URL as a secret
+		// (`RPC_URL` in .dev.vars / `wrangler secret put`), which overrides this var.
+		"RPC_URL": "https://sepolia.base.org",
+		// CaptureFlag address, set after the F2 deploy.
+		"CONTRACT": "",
+		// {"<robot>": {"gateway": "https://…", "robot_id": "0x…", "label": "…"}} (W1).
+		"ROBOTS": "{}",
+		// /health and the cron flag the relayer below this balance (0.001 ETH).
+		"RELAYER_MIN_WEI": "1000000000000000",
+		"DRIVERS_SHOWN": "50"
+	}
+}

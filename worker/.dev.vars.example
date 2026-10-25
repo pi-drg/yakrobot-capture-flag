@@ -1,0 +1,10 @@
+# Local dev secrets for `wrangler dev`. Never commit real values — in production these
+# come from `wrangler secret put`, typed by the operator, never by an agent.
+
+# The relayer's gas-only hot key (design F4/W4). For local runs against anvil, use one of
+# anvil's well-known dev keys; never a key that holds mainnet funds.
+RELAYER_PRIVATE_KEY=
+
+# Optional: a provider RPC URL that overrides the RPC_URL var (it may embed an API key,
+# so it is a secret rather than a wrangler.jsonc var).
+# RPC_URL=

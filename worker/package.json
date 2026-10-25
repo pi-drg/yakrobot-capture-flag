@@ -1,0 +1,23 @@
+{
+  "name": "yakrobot-capture-flag",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "postinstall": "wrangler types",
+    "dev": "wrangler dev",
+    "test": "vitest run",
+    "deploy": "echo 'user deploys (execution plan W3) — this script intentionally does not run wrangler deploy'"
+  },
+  "dependencies": {
+    "hono": "4.13.7",
+    "viem": "2.56.5"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "1.1.8",
+    "@types/node": "26.5.1",
+    "typescript": "7.0.2",
+    "vitest": "4.1.11",
+    "wrangler": "4.131.1"
+  }
+}

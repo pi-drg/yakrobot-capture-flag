@@ -1,0 +1,12 @@
+[profile.default]
+src = "src"
+out = "out"
+libs = ["lib"]
+solc_version = "0.8.31"
+# Base supports Cancun; pinned so a newer forge default can't emit opcodes it lacks.
+evm_version = "cancun"
+optimizer = true
+optimizer_runs = 10_000
+
+[fmt]
+line_length = 100

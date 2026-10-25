@@ -7,6 +7,8 @@ solc_version = "0.8.31"
 evm_version = "cancun"
 optimizer = true
 optimizer_runs = 10_000
+# script/Vectors.s.sol writes test/vectors.json; the tests read it back.
+fs_permissions = [{ access = "read-write", path = "./test" }]
 
 [fmt]
 line_length = 100

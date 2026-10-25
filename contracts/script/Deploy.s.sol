@@ -18,6 +18,15 @@ contract Deploy is Script {
         require(owner != address(0) && relayer != address(0), "OWNER and RELAYER required");
         // F4: the owner is the cold wallet, the relayer the Worker's hot key.
         require(owner != relayer, "OWNER must differ from RELAYER");
+        // Anvil's dev accounts are public; never give them a role on a real chain.
+        if (block.chainid != 31337) {
+            string memory devMnemonic =
+                "test test test test test test test test test test test junk";
+            for (uint32 i; i < 10; i++) {
+                address dev = vm.addr(vm.deriveKey(devMnemonic, i));
+                require(owner != dev && relayer != dev, "OWNER/RELAYER is a public anvil key");
+            }
+        }
 
         vm.startBroadcast();
         cf = new CaptureFlag(owner, relayer, cooldown);

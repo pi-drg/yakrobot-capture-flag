@@ -22,8 +22,8 @@
 		// RPC_URL is a Worker secret, not a var, as in payments: a provider URL can embed an
 		// API key, and payments found mainnet.base.org rate-limits Worker egress
 		// (2026-09-16). See .dev.vars.example.
-		// CaptureFlag address, set after the F2 deploy.
-		"CONTRACT": "",
+		// CaptureFlag on Base Sepolia, deployed 2026-10-25 (F2).
+		"CONTRACT": "0xF3F2e69A1b00577d5d6ca1911a3a80132CD08737",
 		// {"<robot>": {"gateway": "https://…", "robot_id": "0x…", "label": "…"}} (W1).
 		"ROBOTS": "{}",
 		// /health and the cron flag the relayer below this balance (0.001 ETH).

@@ -14,15 +14,14 @@
 	"compatibility_date": "2026-09-01",
 	"workers_dev": true,
 	"preview_urls": false,
-	// Public constants only (design W1). RELAYER_PRIVATE_KEY is `wrangler secret put` in
+	// Public constants only (design W1). RELAYER_PRIVATE_KEY and RPC_URL are `wrangler secret put` in
 	// production and `.dev.vars` (gitignored) locally — never here.
 	"vars": {
 		// Base Sepolia for the pilot; Base mainnet (8453) after the legal check (F6).
 		"CHAIN": "84532",
-		// Public endpoint, fine for the pilot. payments found mainnet.base.org rate-limits
-		// Worker egress (2026-09-16); for an event, set a provider URL as a secret
-		// (`RPC_URL` in .dev.vars / `wrangler secret put`), which overrides this var.
-		"RPC_URL": "https://sepolia.base.org",
+		// RPC_URL is a Worker secret, not a var, as in payments: a provider URL can embed an
+		// API key, and payments found mainnet.base.org rate-limits Worker egress
+		// (2026-09-16). See .dev.vars.example.
 		// CaptureFlag address, set after the F2 deploy.
 		"CONTRACT": "",
 		// {"<robot>": {"gateway": "https://…", "robot_id": "0x…", "label": "…"}} (W1).

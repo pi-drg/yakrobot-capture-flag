@@ -13,3 +13,5 @@ contracts/broadcast/*/31337/
 
 # Environment
 .env
+# forge script recovery locks
+contracts/broadcast/**/*.lock

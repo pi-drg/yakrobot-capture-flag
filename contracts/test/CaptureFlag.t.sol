@@ -336,9 +336,8 @@ contract CaptureFlagTest is Test {
         }
     }
 
-    // --- gas (snapshots/CaptureFlagTest.json): the call's execution gas inside a test. A
-    // real transaction adds 21k intrinsic, calldata and Base's L1 data fee; F2 records
-    // real receipts. ---
+    // --- gas (snapshots/CaptureFlagTest.json). These match real anvil receipts' gasUsed
+    // (F2 rehearsal, 2026-10-25); Base adds an L1 data fee on top. ---
 
     function test_gas_first_and_repeat_capture() public {
         Capture memory c = _capture(ROBOT, alice, 0);

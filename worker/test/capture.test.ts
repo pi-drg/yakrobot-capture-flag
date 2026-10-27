@@ -7,7 +7,7 @@ import { robotIdFor } from "../src/config";
 import { CAPTURE_TYPES, DOMAIN_NAME, DOMAIN_VERSION } from "../src/eip712";
 import { RELAYER_NAME } from "../src/relayer";
 import { ANVIL_CHAIN_ID, ANVIL_RPC, anvilRpc, CONTRACT_ADDRESS, COOLDOWN, RELAYER_ADDRESS } from "./anvil";
-import { setGamePaused } from "./game";
+import { randomIp, setGamePaused } from "./game";
 import { setStub, STUB_PORTS, STUB_ROBOT } from "./stub-ports";
 
 const ROBOT_ID = robotIdFor(`127.0.0.1:${STUB_PORTS.capture}`, STUB_ROBOT);
@@ -68,10 +68,11 @@ async function signed(opts: Options = {}) {
   return { player: player.address.toLowerCase(), body: { typedData, sig } };
 }
 
+/** Each post from its own IP, so the per-IP limit (limits.test.ts) stays out of the way. */
 async function post(body: unknown) {
   const res = await SELF.fetch("https://capture-flag.test/capture", {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", "cf-connecting-ip": randomIp() },
     body: JSON.stringify(body),
   });
   return { code: res.status, body: (await res.json()) as Record<string, unknown>, headers: res.headers };

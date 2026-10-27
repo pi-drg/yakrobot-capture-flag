@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { robotIdFor } from "../src/config";
 import { CAPTURE_TYPES, DOMAIN_NAME, DOMAIN_VERSION } from "../src/eip712";
 import { ANVIL_CHAIN_ID, CONTRACT_ADDRESS, OWNER_KEY } from "./anvil";
+import { randomIp } from "./game";
 import { setStub, STUB_PORTS, STUB_ROBOT } from "./stub-ports";
 
 const BASE = "https://capture-flag.test";
@@ -38,7 +39,7 @@ async function post(message: string, key: Hex = OWNER_KEY as Hex, signature?: st
   const sig = signature ?? (await privateKeyToAccount(key).signMessage({ message }));
   const res = await SELF.fetch(`${BASE}/admin/state`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", "cf-connecting-ip": randomIp() },
     body: JSON.stringify({ message, signature: sig }),
   });
   return { code: res.status, body: (await res.json()) as Record<string, any> };
@@ -73,7 +74,7 @@ async function captureCode(slug: keyof typeof STUB_PORTS): Promise<{ code: numbe
   };
   const res = await SELF.fetch(`${BASE}/capture`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", "cf-connecting-ip": randomIp() },
     body: JSON.stringify({ typedData, sig: `0x${"11".repeat(65)}` }),
   });
   return { code: res.status, error: ((await res.json()) as { error: string }).error };

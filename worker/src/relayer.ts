@@ -139,6 +139,17 @@ export class Relayer extends DurableObject<Env> {
       .toArray().length;
     if (used) return { ok: false, status: 400, error: "this capture was already used" };
     const now = Math.floor(Date.now() / 1000);
+    // A ceiling on sends across the whole game (design W6), against a swarm of wallets.
+    const hour = this.sql
+      .exec<{ n: number; first: number | null }>(
+        "SELECT COUNT(*) AS n, MIN(at) AS first FROM captures WHERE at > ?",
+        now - 3600
+      )
+      .one();
+    if (hour.n >= this.config.sendsPerHour) {
+      const retryAfter = Math.max(1, (hour.first ?? now) + 3600 - now);
+      return { ok: false, status: 503, error: "the game is at its hourly ride limit", retryAfter };
+    }
     const last = this.sql
       .exec<{ at: number }>(
         "SELECT at FROM captures WHERE robot_id = ? AND player = ? ORDER BY seq DESC LIMIT 1",

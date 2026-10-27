@@ -29,8 +29,14 @@
 		"ROBOTS": "{}",
 		// /health and the cron flag the relayer below this balance (0.001 ETH).
 		"RELAYER_MIN_WEI": "1000000000000000",
-		"DRIVERS_SHOWN": "50"
+		"DRIVERS_SHOWN": "50",
+		// A ceiling on captures relayed per hour, across every robot and visitor, so a swarm
+		// of fresh wallets can't drain the relayer. Three robots at 5-min rides is 36/h.
+		"SENDS_PER_HOUR": "60"
 	},
+	// design W6: 10 captures (and admin posts) a minute per IP. namespace_id is any number
+	// unique to this account.
+	"ratelimits": [{ "name": "IP_LIMIT", "namespace_id": "1001", "simple": { "limit": 10, "period": 60 } }],
 	// design W6: check the relayer's balance and the contract's relayer every 15 minutes.
 	"triggers": { "crons": ["*/15 * * * *"] },
 	// One named instance holds the relayer key, the nonce, the drivers log and the game

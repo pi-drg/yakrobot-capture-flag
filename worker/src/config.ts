@@ -31,6 +31,7 @@ export interface Config {
   robots: Robot[];
   relayerMinWei: bigint;
   driversShown: number;
+  sendsPerHour: number;
 }
 
 /** Whatever shape env vars arrive in — a Worker's `Env`, or a plain object in tests. */
@@ -160,6 +161,7 @@ export function loadConfig(env: RawEnv): Config {
     robots: parseRobots(requireVar(env, "ROBOTS")),
     relayerMinWei: BigInt(relayerMinWei),
     driversShown: validatePositiveInt("DRIVERS_SHOWN", requireVar(env, "DRIVERS_SHOWN")),
+    sendsPerHour: validatePositiveInt("SENDS_PER_HOUR", requireVar(env, "SENDS_PER_HOUR")),
   };
 }
 

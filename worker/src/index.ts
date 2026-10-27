@@ -41,6 +41,20 @@ app.use("*", async (c, next) => {
   await next();
 });
 
+/** design W6: 10 a minute per IP, before any gateway, RPC or relayer call. Cloudflare
+ * always sets CF-Connecting-IP in production; without it (local dev), all share one key. */
+for (const path of ["/capture", "/admin/state"]) {
+  app.post(path, async (c, next) => {
+    const ip = c.req.header("cf-connecting-ip") ?? "unknown";
+    const { success } = await c.env.IP_LIMIT.limit({ key: `${path}:${ip}` });
+    if (!success) {
+      c.header("Retry-After", "60");
+      return c.json({ error: "too many requests, try again in a minute" }, 429);
+    }
+    await next();
+  });
+}
+
 function relayer(env: Env) {
   return env.RELAYER.get(env.RELAYER.idFromName(RELAYER_NAME));
 }

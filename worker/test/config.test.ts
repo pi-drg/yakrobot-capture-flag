@@ -25,6 +25,7 @@ function env(overrides: RawEnv = {}): RawEnv {
     ROBOTS: JSON.stringify(ROBOTS),
     RELAYER_MIN_WEI: "1000000000000000",
     DRIVERS_SHOWN: "50",
+    SENDS_PER_HOUR: "60",
     ...overrides,
   };
 }
@@ -52,6 +53,7 @@ describe("loadConfig", () => {
     expect(config.robots).toEqual([]);
     expect(config.relayerMinWei).toBe(1_000_000_000_000_000n);
     expect(config.driversShown).toBe(50);
+    expect(config.sendsPerHour).toBe(60);
   });
 
   it("derives each robotId from the gateway host and robot name", () => {
@@ -131,6 +133,7 @@ describe("loadConfig", () => {
     ["a malformed CONTRACT", { CONTRACT: "0x1234" }],
     ["a negative RELAYER_MIN_WEI", { RELAYER_MIN_WEI: "-1" }],
     ["DRIVERS_SHOWN of zero", { DRIVERS_SHOWN: "0" }],
+    ["SENDS_PER_HOUR of zero", { SENDS_PER_HOUR: "0" }],
   ])("rejects %s", (_, overrides) => {
     expect(() => loadConfig(env(overrides))).toThrow(ConfigError);
   });

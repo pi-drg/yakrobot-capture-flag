@@ -1,7 +1,10 @@
 import { SELF } from "cloudflare:test";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { stateFromIndex } from "../src/gateway";
+import { setGamePaused } from "./game";
 import { setStub } from "./stub-ports";
+
+beforeAll(() => setGamePaused(false));
 
 async function status(slug: string) {
   const res = await SELF.fetch(`https://capture-flag.test/r/${slug}/status`);

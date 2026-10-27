@@ -4,9 +4,7 @@
 // workers_dev is on: unlike pay.yakrobot.com, the claim page is meant to be public. The
 // custom domain (capture-flag.yakrobot.com) is added by the user at deploy time (W3).
 //
-// Still to come: the Relayer Durable Object (W2) — its migration must use
-// `new_sqlite_classes`, the only DO storage the Workers Free plan allows — and the
-// 15-minute balance cron (W6).
+// Still to come: the 15-minute balance cron (W6).
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "yakrobot-capture-flag",
@@ -34,5 +32,12 @@
 		// /health and the cron flag the relayer below this balance (0.001 ETH).
 		"RELAYER_MIN_WEI": "1000000000000000",
 		"DRIVERS_SHOWN": "50"
-	}
+	},
+	// One named instance holds the relayer key, the nonce, the drivers log and the game
+	// switches (design W4, W5a, W7).
+	"durable_objects": {
+		"bindings": [{ "name": "RELAYER", "class_name": "Relayer" }]
+	},
+	// new_sqlite_classes: the only DO storage the Workers Free plan allows.
+	"migrations": [{ "tag": "v1", "new_sqlite_classes": ["Relayer"] }]
 }

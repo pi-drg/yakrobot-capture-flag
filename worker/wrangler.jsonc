@@ -24,9 +24,10 @@
 		// (2026-09-16). See .dev.vars.example.
 		// CaptureFlag on Base Sepolia, deployed 2026-10-25 (F2).
 		"CONTRACT": "0xF3F2e69A1b00577d5d6ca1911a3a80132CD08737",
-		// {"<robot>": {"gateway": "https://<fixed host>", "label": "…", "place": "Berlin"}} (W1).
-		// robot_id is derived as keccak256(host + "/" + robot) (F3), so the gateway host must
-		// never change. Empty until each friend's gateway has a fixed hostname.
+		// {"<slug>": {"gateway": "https://<fixed host>", "robot": "picar_freenove", "label": "…",
+		// "place": "Berlin"}} (W1). The slug is ours (/r/berlin); "robot" is the gateway's robot
+		// name. robot_id is derived as keccak256(host + "/" + robot) (F3), so the gateway host
+		// must never change. Empty until each friend's gateway has a fixed hostname.
 		"ROBOTS": "{}",
 		// /health and the cron flag the relayer below this balance (0.001 ETH).
 		"RELAYER_MIN_WEI": "1000000000000000",

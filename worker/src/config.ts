@@ -2,14 +2,19 @@ import { keccak256, toBytes } from "viem";
 
 /**
  * Read and validate the Worker's configuration — design W1. Each robot's `robotId` is
- * derived here from its gateway host and robot key (design F3), so a friend running a
+ * derived here from its gateway host and robot name (design F3), so a friend running a
  * robot only hands over a host and a name, and no hand-typed id can be wrong.
+ *
+ * `ROBOTS` is keyed by a slug of our own (`berlin`), not by the gateway's robot name:
+ * friends running the same kit all have a `picar_freenove`.
  */
 
 export class ConfigError extends Error {}
 
 export interface Robot {
-  /** The `ROBOTS` key, which is also the gateway's `/{robot}` route segment. */
+  /** The `ROBOTS` key, used in this Worker's URLs (`/r/berlin`). */
+  slug: string;
+  /** The gateway's robot (plugin) name, its `/{robot}` route segment. */
   name: string;
   /** Gateway origin, no trailing slash, e.g. `https://robots.example.org`. */
   gateway: string;
@@ -33,9 +38,10 @@ export type RawEnv = Record<string, string | undefined>;
 
 const CHAINS = new Set([84532, 8453]);
 const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
-// Gateway plugin names (picar_adeept, fakerobot): they sit in the URL path and in robotId.
+const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,31}$/;
+// Gateway plugin names (picar_freenove, fakerobot_picar): in the gateway's URL path and in robotId.
 const ROBOT_NAME_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/;
-const ROBOT_FIELDS = new Set(["gateway", "label", "place"]);
+const ROBOT_FIELDS = new Set(["gateway", "robot", "label", "place"]);
 
 /** Read `env[name]`, trimmed; throws `ConfigError` if missing or blank. */
 function requireVar(env: RawEnv, name: string): string {
@@ -87,8 +93,8 @@ function validateText(name: string, value: unknown): string {
   return value.trim();
 }
 
-/** `ROBOTS` JSON: `{"<robot>": {"gateway", "label", "place"}}`. Empty is allowed: the index
- * page then lists no robots until a friend's gateway is added. */
+/** `ROBOTS` JSON: `{"<slug>": {"gateway", "robot", "label", "place"}}`. Empty is allowed:
+ * the index page then lists no robots until a friend's gateway is added. */
 function parseRobots(value: string): Robot[] {
   let raw: unknown;
   try {
@@ -97,30 +103,39 @@ function parseRobots(value: string): Robot[] {
     throw new ConfigError("ROBOTS must be JSON");
   }
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-    throw new ConfigError("ROBOTS must be a JSON object keyed by robot name");
+    throw new ConfigError("ROBOTS must be a JSON object keyed by slug");
   }
   const robots: Robot[] = [];
-  for (const [name, entry] of Object.entries(raw)) {
-    if (!ROBOT_NAME_RE.test(name)) {
-      throw new ConfigError(`ROBOTS key ${JSON.stringify(name)} must match ${ROBOT_NAME_RE}`);
+  const ids = new Map<string, string>();
+  for (const [slug, entry] of Object.entries(raw)) {
+    if (!SLUG_RE.test(slug)) {
+      throw new ConfigError(`ROBOTS key ${JSON.stringify(slug)} must match ${SLUG_RE}`);
     }
+    const at = `ROBOTS.${slug}`;
     if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
-      throw new ConfigError(`ROBOTS.${name} must be an object`);
+      throw new ConfigError(`${at} must be an object`);
     }
     const extra = Object.keys(entry).filter((k) => !ROBOT_FIELDS.has(k));
     if (extra.length) {
       // Catches a leftover hand-typed robot_id, which is now derived.
-      throw new ConfigError(`ROBOTS.${name} has unknown fields: ${extra.join(", ")}`);
+      throw new ConfigError(`${at} has unknown fields: ${extra.join(", ")}`);
     }
     const e = entry as Record<string, unknown>;
-    const url = validateGateway(`ROBOTS.${name}`, e.gateway);
+    const url = validateGateway(at, e.gateway);
+    if (typeof e.robot !== "string" || !ROBOT_NAME_RE.test(e.robot)) {
+      throw new ConfigError(`${at}.robot must match ${ROBOT_NAME_RE}`);
+    }
+    const robotId = robotIdFor(url.host, e.robot);
+    const clash = ids.get(robotId);
+    if (clash) throw new ConfigError(`${at} is the same gateway robot as ROBOTS.${clash}`);
+    ids.set(robotId, slug);
     robots.push({
-      name,
+      slug,
+      name: e.robot,
       gateway: url.origin,
-      // Distinct per entry: JSON keys are unique and `URL` lowercases the host.
-      robotId: robotIdFor(url.host, name),
-      label: validateText(`ROBOTS.${name}.label`, e.label),
-      place: validateText(`ROBOTS.${name}.place`, e.place),
+      robotId,
+      label: validateText(`${at}.label`, e.label),
+      place: validateText(`${at}.place`, e.place),
     });
   }
   return robots;
@@ -146,7 +161,7 @@ export function loadConfig(env: RawEnv): Config {
   };
 }
 
-/** The configured robot by name, or `undefined` for an unknown one (the route's 404). */
-export function findRobot(config: Config, name: string): Robot | undefined {
-  return config.robots.find((r) => r.name === name);
+/** The configured robot by slug, or `undefined` for an unknown one (the route's 404). */
+export function findRobot(config: Config, slug: string): Robot | undefined {
+  return config.robots.find((r) => r.slug === slug);
 }

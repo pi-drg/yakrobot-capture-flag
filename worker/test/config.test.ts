@@ -2,10 +2,21 @@ import { describe, expect, it } from "vitest";
 import vectors from "../../contracts/test/vectors.json";
 import { ConfigError, findRobot, loadConfig, robotIdFor, type RawEnv } from "../src/config";
 
-const ROBOTS = {
-  picar_adeept: { gateway: "https://gateway.yakrobot.example", label: "PiCar", place: "India" },
-  fakerobot: { gateway: "https://berlin.example:8443/", label: "Fake", place: "Berlin" },
+const INDIA = {
+  gateway: "https://gateway.yakrobot.example",
+  robot: "picar_adeept",
+  label: "Adeept PiCar",
+  place: "India",
 };
+// Two friends with the same kit: same robot name, different gateways.
+const BERLIN = {
+  gateway: "https://berlin.example:8443/",
+  robot: "picar_freenove",
+  label: "Freenove PiCar",
+  place: "Berlin",
+};
+const SEATTLE = { ...BERLIN, gateway: "https://seattle.example", place: "Seattle" };
+const ROBOTS = { india: INDIA, berlin: BERLIN, seattle: SEATTLE };
 
 function env(overrides: RawEnv = {}): RawEnv {
   return {
@@ -44,56 +55,71 @@ describe("loadConfig", () => {
   });
 
   it("derives each robotId from the gateway host and robot name", () => {
-    const [adeept, fake] = loadConfig(env()).robots;
-    expect(adeept).toEqual({
+    const [india, berlin] = loadConfig(env()).robots;
+    expect(india).toEqual({
+      slug: "india",
       name: "picar_adeept",
       gateway: "https://gateway.yakrobot.example",
       robotId: vectors.vectors[0].message.robotId,
-      label: "PiCar",
+      label: "Adeept PiCar",
       place: "India",
     });
     // The port is part of the host; a trailing slash is not.
-    expect(fake.gateway).toBe("https://berlin.example:8443");
-    expect(fake.robotId).toBe(robotIdFor("berlin.example:8443", "fakerobot"));
+    expect(berlin.gateway).toBe("https://berlin.example:8443");
+    expect(berlin.robotId).toBe(robotIdFor("berlin.example:8443", "picar_freenove"));
+  });
+
+  it("keeps friends with the same robot name apart by their gateway host", () => {
+    const { robots } = loadConfig(env());
+    const [, berlin, seattle] = robots;
+    expect(berlin.name).toBe(seattle.name);
+    expect(berlin.robotId).not.toBe(seattle.robotId);
   });
 
   it("lowercases the host, as the URL standard does", () => {
     const [robot] = loadConfig(
-      robots({ picar_adeept: { ...ROBOTS.picar_adeept, gateway: "https://Gateway.Yakrobot.Example" } })
+      robots({ india: { ...INDIA, gateway: "https://Gateway.Yakrobot.Example" } })
     ).robots;
     expect(robot.robotId).toBe(vectors.vectors[0].message.robotId);
   });
 
-  it("finds a configured robot and not an unknown one", () => {
+  it("rejects two slugs for the same gateway robot", () => {
+    expect(() =>
+      loadConfig(robots({ india: INDIA, again: { ...INDIA, gateway: "https://GATEWAY.yakrobot.example/" } }))
+    ).toThrow(/same gateway robot as ROBOTS.india/);
+  });
+
+  it("finds a configured robot by slug and not an unknown one", () => {
     const config = loadConfig(env());
-    expect(findRobot(config, "fakerobot")?.place).toBe("Berlin");
-    expect(findRobot(config, "nope")).toBeUndefined();
+    expect(findRobot(config, "berlin")?.place).toBe("Berlin");
+    expect(findRobot(config, "picar_freenove")).toBeUndefined();
   });
 
   it("allows http only to localhost for local dev", () => {
-    const local = { fakerobot: { ...ROBOTS.fakerobot, gateway: "http://127.0.0.1:8000" } };
+    const local = { berlin: { ...BERLIN, gateway: "http://127.0.0.1:8000" } };
     expect(loadConfig(robots(local)).robots[0].gateway).toBe("http://127.0.0.1:8000");
   });
 
   it.each([
     ["a non-https gateway", { gateway: "http://berlin.example" }],
-    ["a gateway with a path", { gateway: "https://berlin.example/fakerobot" }],
+    ["a gateway with a path", { gateway: "https://berlin.example/picar_freenove" }],
     ["a gateway with a query", { gateway: "https://berlin.example/?x=1" }],
     ["a gateway with credentials", { gateway: "https://u:p@berlin.example" }],
     ["a gateway that isn't a URL", { gateway: "berlin.example" }],
+    ["a missing robot name", { robot: undefined }],
+    ["a robot name with a slash", { robot: "picar/freenove" }],
+    ["an uppercase robot name", { robot: "PiCar" }],
     ["a missing label", { label: undefined }],
     ["a blank place", { place: "  " }],
     ["a hand-typed robot_id", { robot_id: "0x" + "00".repeat(32) }],
   ])("rejects %s", (_, patch) => {
-    expect(() => loadConfig(robots({ fakerobot: { ...ROBOTS.fakerobot, ...patch } }))).toThrow(
-      ConfigError
-    );
+    expect(() => loadConfig(robots({ berlin: { ...BERLIN, ...patch } }))).toThrow(ConfigError);
   });
 
-  it.each(["Fakerobot", "fake robot", "fake/robot", "_fake", ""])(
-    "rejects the robot key %j",
-    (name) => {
-      expect(() => loadConfig(robots({ [name]: ROBOTS.fakerobot }))).toThrow(ConfigError);
+  it.each(["Berlin", "ber lin", "ber/lin", "-berlin", "picar_freenove", ""])(
+    "rejects the slug %j",
+    (slug) => {
+      expect(() => loadConfig(robots({ [slug]: BERLIN }))).toThrow(ConfigError);
     }
   );
 

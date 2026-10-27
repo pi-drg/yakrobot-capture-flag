@@ -116,7 +116,7 @@ describe("loadConfig", () => {
     expect(() => loadConfig(robots({ berlin: { ...BERLIN, ...patch } }))).toThrow(ConfigError);
   });
 
-  it.each(["Berlin", "ber lin", "ber/lin", "-berlin", "picar_freenove", ""])(
+  it.each(["Berlin", "ber lin", "ber/lin", "-berlin", "picar_freenove", "", "game"])(
     "rejects the slug %j",
     (slug) => {
       expect(() => loadConfig(robots({ [slug]: BERLIN }))).toThrow(ConfigError);

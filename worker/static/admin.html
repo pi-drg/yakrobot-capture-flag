@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Game Admin · YakRobot</title>
+    <meta name="description" content="Pause the capture-flag game or disable a robot, signed by the owner wallet." />
+    <meta name="robots" content="noindex" />
+    <meta name="theme-color" content="#0064ff" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Lora:ital,wght@0,400;0,500;1,400&family=Outfit:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <style>
+      /* Brand tokens from yakrobot.com (Protocolized). */
+      :root {
+        --primary: #0064ff;
+        --primary-pressed: #004fcc;
+        --primary-light-bg: #e6efff;
+        --on-primary: #ffffff;
+        --secondary: #0f6e56;
+        --secondary-deep: #085041;
+        --secondary-light-bg: #e1f5ee;
+        --accent: #d85a30;
+        --accent-bg: #faece7;
+        --canvas: #f9f8f5;
+        --surface-white: #ffffff;
+        --surface-muted: #f3f4f6;
+        --hairline: #e5e7eb;
+        --hairline-soft: #f3f4f6;
+        --ink-dark: #2c2c2a;
+        --ink-secondary: #5f5e5a;
+        --font-serif: "Instrument Serif", Georgia, serif;
+        --font-body: "Lora", Georgia, serif;
+        --font-sans: "Outfit", system-ui, sans-serif;
+        --font-mono: "JetBrains Mono", "Courier New", monospace;
+        --radius-md: 8px;
+        --radius-pill: 9999px;
+        --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+        --maxw: 1120px;
+      }
+      * { box-sizing: border-box; }
+      [hidden] { display: none !important; }
+      body {
+        margin: 0;
+        background: var(--canvas);
+        color: var(--ink-dark);
+        font-family: var(--font-body);
+        font-size: 16px;
+        line-height: 1.55;
+        -webkit-font-smoothing: antialiased;
+      }
+      a { color: inherit; text-decoration: none; }
+      h1, h2, h3 {
+        font-family: var(--font-serif);
+        font-weight: 400;
+        margin: 0;
+        letter-spacing: -0.01em;
+        line-height: 1.05;
+      }
+      a:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; border-radius: 4px; }
+      .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 24px; }
+      .eyebrow {
+        font-family: var(--font-sans);
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--ink-secondary);
+        margin: 0;
+      }
+      .mono { font-family: var(--font-mono); }
+
+      /* nav */
+      header.nav {
+        position: sticky;
+        top: 0;
+        z-index: 50;
+        background: rgba(255, 255, 255, 0.86);
+        backdrop-filter: saturate(140%) blur(8px);
+        border-bottom: 1px solid var(--hairline);
+      }
+      .nav-inner { height: 64px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+      .brand { display: flex; align-items: center; gap: 11px; }
+      .pmark { width: 24px; height: 27px; flex: none; color: var(--primary); }
+      .pmark path { stroke: currentColor; stroke-width: 46; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+      .brand-name { font-family: var(--font-serif); font-size: 21px; line-height: 1; }
+      .nav-link { font-family: var(--font-sans); font-size: 14px; padding: 8px 12px; border-radius: 6px; }
+      .nav-link:hover { color: var(--primary); }
+
+      .hero { padding: 48px 0 28px; }
+      .hero h1 { font-size: clamp(36px, 6vw, 56px); letter-spacing: -0.025em; margin-top: 10px; }
+      .muted { font-family: var(--font-sans); font-size: 14px; color: var(--ink-secondary); }
+      .note { font-family: var(--font-sans); font-size: 13px; color: var(--ink-secondary); margin: 0; }
+      .warn {
+        margin-top: 18px;
+        max-width: 640px;
+        font-family: var(--font-sans);
+        font-size: 14px;
+        background: var(--accent-bg);
+        color: var(--ink-dark);
+        border-radius: var(--radius-md);
+        padding: 12px 16px;
+      }
+      .warn a { text-decoration: underline; text-underline-offset: 2px; }
+      .msg { font-family: var(--font-sans); font-size: 15px; margin: 14px 0 0; min-height: 1.4em; }
+      .msg.err { color: var(--accent); }
+      .msg.ok { color: var(--secondary-deep); }
+      .btn {
+        appearance: none;
+        border: 0;
+        border-radius: var(--radius-md);
+        background: var(--primary);
+        color: var(--on-primary);
+        font-family: var(--font-sans);
+        font-size: 15px;
+        font-weight: 500;
+        padding: 10px 18px;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .btn:hover { background: var(--primary-pressed); }
+      .btn:disabled { background: var(--hairline); color: var(--ink-secondary); cursor: not-allowed; }
+      .btn.ghost { background: var(--surface-white); color: var(--primary); border: 1px solid var(--primary); }
+      .btn.ghost:hover { background: var(--primary-light-bg); }
+      .btn.ghost:disabled { border-color: var(--hairline); color: var(--ink-secondary); background: var(--surface-white); }
+      .btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
+      .badge {
+        font-family: var(--font-sans);
+        font-size: 12.5px;
+        font-weight: 500;
+        border-radius: var(--radius-pill);
+        padding: 3px 12px;
+        white-space: nowrap;
+      }
+      .badge.on { background: var(--secondary-light-bg); color: var(--secondary-deep); }
+      .badge.off { background: var(--accent-bg); color: var(--accent); }
+      section.band { padding: 8px 0 56px; }
+      .card {
+        background: var(--surface-white);
+        border: 1px solid var(--hairline);
+        border-radius: var(--radius-md);
+        padding: 20px 22px;
+        margin-top: 16px;
+        max-width: 760px;
+      }
+      .row-item { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+      .row-item + .row-item { border-top: 1px solid var(--hairline-soft); margin-top: 14px; padding-top: 14px; }
+      .who h3 { font-size: 26px; }
+      .who .muted { margin: 4px 0 0; }
+      .side { display: flex; align-items: center; gap: 12px; }
+      .wallet-line { margin-top: 16px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+
+      footer.site { border-top: 1px solid var(--hairline); padding: 32px 0 48px; }
+      footer .row { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-family: var(--font-sans); font-size: 13px; color: var(--ink-secondary); }
+      footer a { text-decoration: underline; text-underline-offset: 2px; }
+      footer a:hover { color: var(--primary); }
+
+      @media (max-width: 720px) {
+        .wrap { padding: 0 16px; }
+        .hero { padding: 32px 0 20px; }
+        .card { padding: 16px; }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="nav">
+      <div class="wrap nav-inner">
+        <a class="brand" href="/" aria-label="Capture the Flag — home">
+          <svg class="pmark" viewBox="125 205 670 747" aria-hidden="true">
+            <g transform="rotate(180, 500, 500) scale(-1, 1) translate(-1000, 0)">
+              <path d="M 676.970 676.855 C 579.388 774.437 420.613 774.439 323.030 676.856 C 312.127 665.954 302.514 654.254 294.048 641.995 L 197.681 641.995 L 197.681 724.133 C 197.681 738.504 186.029 750.156 171.657 750.156 C 157.287 750.156 145.634 738.504 145.634 724.133 L 145.634 94.293 C 145.634 79.919 157.287 68.270 171.657 68.270 C 186.029 68.270 197.681 79.919 197.681 94.293 L 197.681 589.949 L 266.574 589.949 C 232.183 500.423 250.957 394.987 323.030 322.915 C 420.611 225.333 579.387 225.334 676.969 322.916 C 774.552 420.499 774.552 579.273 676.970 676.855 Z" />
+              <path d="M 359.832 640.054 C 437.120 717.341 562.879 717.342 640.168 640.053 C 717.455 562.767 717.455 437.006 640.167 359.719" />
+            </g>
+          </svg>
+          <span class="brand-name">YakRobot</span>
+        </a>
+        <a class="nav-link" href="https://yakrobot.com" rel="noopener">yakrobot.com</a>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="wrap">
+          <p class="eyebrow">Owner only</p>
+          <h1>Game admin</h1>
+          <p class="warn">
+            Signing here only pauses or disables captures; it never sends a transaction.
+            Rides already started finish. For an emergency, the on-chain hard stop is the
+            owner calling <span class="mono">setRelayer(0x0)</span> on the
+            <a id="contract-link" target="_blank" rel="noopener">contract</a>.
+          </p>
+          <div class="wallet-line">
+            <button class="btn" id="connect" type="button">Connect wallet</button>
+            <span class="muted" id="who"></span>
+          </div>
+          <p class="msg" id="msg" role="status" aria-live="polite"></p>
+        </div>
+      </section>
+
+      <section class="band">
+        <div class="wrap">
+          <p class="eyebrow">Whole game</p>
+          <div class="card" id="game"><p class="muted">Loading…</p></div>
+          <p class="eyebrow" style="margin-top: 36px">Robots</p>
+          <div class="card" id="robots"><p class="muted">Loading…</p></div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site">
+      <div class="wrap row">
+        <span>A fresh deploy starts paused. Check <a href="/health">/health</a> before resuming.</span>
+        <a href="/">All robots</a>
+      </div>
+    </footer>
+
+    <script>
+      "use strict";
+      var EXPLORERS = { 84532: "https://sepolia.basescan.org", 8453: "https://basescan.org" };
+      var S = null; // GET /admin/state
+      var account = null;
+      var busy = false;
+
+      function $(id) { return document.getElementById(id); }
+      function el(tag, attrs, children) {
+        var node = document.createElement(tag);
+        for (var k in attrs || {}) {
+          if (k === "class") node.className = attrs[k];
+          else node.setAttribute(k, attrs[k]);
+        }
+        (children || []).forEach(function (c) {
+          node.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+        });
+        return node;
+      }
+      function short(addr) { return addr.slice(0, 6) + "…" + addr.slice(-4); }
+      function say(text, kind) {
+        var m = $("msg");
+        m.textContent = text || "";
+        m.className = "msg" + (kind ? " " + kind : "");
+      }
+      function isOwner() { return !!(account && S && S.owner && account === S.owner); }
+
+      function button(text, ghost, onClick) {
+        var b = el("button", { class: ghost ? "btn ghost" : "btn", type: "button" }, [text]);
+        b.disabled = busy || !isOwner();
+        b.addEventListener("click", onClick);
+        return b;
+      }
+
+      function render() {
+        if (!S) return;
+        var explorer = EXPLORERS[S.chainId];
+        $("contract-link").href = explorer + "/address/" + S.contract + "#writeContract";
+
+        $("game").replaceChildren(
+          el("div", { class: "row-item" }, [
+            el("div", { class: "who" }, [
+              el("h3", {}, [S.paused ? "Paused" : "Running"]),
+              el("p", { class: "muted" }, [S.paused ? "No new captures anywhere." : "Every enabled, online robot can be captured."]),
+            ]),
+            S.paused
+              ? button("Resume", false, function () { send("resume", "game"); })
+              : button("Pause", true, function () { send("pause", "game"); }),
+          ])
+        );
+
+        var robots = $("robots");
+        if (!S.robots.length) {
+          robots.replaceChildren(el("p", { class: "muted" }, ["No robots in ROBOTS yet."]));
+          return;
+        }
+        robots.replaceChildren.apply(
+          robots,
+          S.robots.map(function (r) {
+            return el("div", { class: "row-item" }, [
+              el("div", { class: "who" }, [
+                el("h3", {}, [r.label]),
+                el("p", { class: "muted" }, [
+                  r.place + " · " + r.rides + (r.rides === 1 ? " ride · " : " rides · ") +
+                    r.drivers + (r.drivers === 1 ? " driver" : " drivers"),
+                ]),
+              ]),
+              el("div", { class: "side" }, [
+                el("span", { class: r.disabled ? "badge off" : "badge on" }, [r.disabled ? "Disabled" : "Enabled"]),
+                r.disabled
+                  ? button("Enable", false, function () { send("enable", r.slug); })
+                  : button("Disable", true, function () { send("disable", r.slug); }),
+              ]),
+            ]);
+          })
+        );
+      }
+
+      function renderWho() {
+        if (!account) { $("who").textContent = ""; return; }
+        var text = "Connected " + short(account);
+        if (S && S.owner && !isOwner()) text += ", which is not the owner (" + short(S.owner) + ").";
+        else if (S && !S.owner) text += ". Couldn't read the owner from the chain; try reloading.";
+        $("who").textContent = text;
+        $("connect").hidden = true;
+      }
+
+      async function load() {
+        var res = await fetch("/admin/state", { cache: "no-store" });
+        S = await res.json();
+        render();
+        renderWho();
+      }
+
+      async function connect() {
+        if (!window.ethereum) { say("No wallet found. Open this page in a browser with MetaMask.", "err"); return; }
+        try {
+          var accounts = await ethereum.request({ method: "eth_requestAccounts" });
+          account = accounts && accounts[0] ? accounts[0].toLowerCase() : null;
+          say("");
+        } catch (e) {
+          say(e && e.code === 4001 ? "Cancelled in your wallet." : "Couldn't connect the wallet.", "err");
+        }
+        render();
+        renderWho();
+      }
+
+      function utf8Hex(text) {
+        return "0x" + Array.from(new TextEncoder().encode(text), function (b) { return b.toString(16).padStart(2, "0"); }).join("");
+      }
+
+      // Must match the Worker's adminMessage() exactly (design W7).
+      function message(action, target) {
+        return [
+          "yakrobot-capture-flag admin",
+          "action: " + action,
+          "target: " + target,
+          "chain: " + S.chainId,
+          "contract: " + S.contract,
+          "issued: " + Math.floor(Date.now() / 1000),
+        ].join("\n");
+      }
+
+      async function send(action, target) {
+        busy = true;
+        render();
+        try {
+          var text = message(action, target);
+          say("Sign the " + action + " in your wallet. No gas.");
+          var signature = await ethereum.request({ method: "personal_sign", params: [utf8Hex(text), account] });
+          var res = await fetch("/admin/state", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ message: text, signature: signature }),
+          });
+          var body = await res.json().catch(function () { return {}; });
+          if (!res.ok) { say((body.error || "Something went wrong") + ".", "err"); return; }
+          S = Object.assign(body, { owner: S.owner });
+          say("Done: " + action + (target === "game" ? " the game." : " " + target + "."), "ok");
+        } catch (e) {
+          say(e && e.code === 4001 ? "Cancelled in your wallet." : "Something went wrong" + (e && e.message ? ": " + e.message : "."), "err");
+        } finally {
+          busy = false;
+          render();
+        }
+      }
+
+      $("connect").addEventListener("click", connect);
+      load().catch(function () { say("Couldn't load the game state.", "err"); });
+    </script>
+  </body>
+</html>

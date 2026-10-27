@@ -111,6 +111,8 @@ function parseRobots(value: string): Robot[] {
     if (!SLUG_RE.test(slug)) {
       throw new ConfigError(`ROBOTS key ${JSON.stringify(slug)} must match ${SLUG_RE}`);
     }
+    // The admin message's game-wide target (design W7).
+    if (slug === "game") throw new ConfigError('ROBOTS key "game" is reserved');
     const at = `ROBOTS.${slug}`;
     if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
       throw new ConfigError(`${at} must be an object`);

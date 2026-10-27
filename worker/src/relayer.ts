@@ -89,11 +89,23 @@ export class Relayer extends DurableObject<Env> {
     };
   }
 
-  /** `target` is "game" (pause) or a robot slug (disable). The admin route (W2a)
-   * authenticates the caller before this is reached. */
+  /** `target` is "game" (pause) or a robot slug (disable). Unchecked: tests use it
+   * directly; the admin route goes through `applySwitch`. */
   setSwitch(target: string, on: boolean): void {
     const key = target === "game" ? "paused" : `disabled:${target}`;
     this.sql.exec("INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)", key, on ? "1" : "0");
+  }
+
+  /** The admin route's switch, after it has checked the owner's signature. `issued` must
+   * be newer than the last one applied to this target, so an old "resume" can't be
+   * replayed after a "pause" (design W7 step 2). False if it isn't. */
+  applySwitch(target: string, on: boolean, issued: number): boolean {
+    const key = `issued:${target}`;
+    const row = this.sql.exec<{ value: string }>("SELECT value FROM kv WHERE key = ?", key).toArray()[0];
+    if (row && issued <= Number(row.value)) return false;
+    this.sql.exec("INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)", key, String(issued));
+    this.setSwitch(target, on);
+    return true;
   }
 
   // ---- capture ----
@@ -255,6 +267,16 @@ export class Relayer extends DurableObject<Env> {
       )
       .one();
     return { recent, top, rides: totals.rides, drivers: totals.drivers };
+  }
+
+  /** Rides and distinct drivers per robot id, for the admin page. */
+  robotTotals(): Record<string, { rides: number; drivers: number }> {
+    const rows = this.sql
+      .exec<{ robot_id: string; rides: number; drivers: number }>(
+        "SELECT robot_id, SUM(n) AS rides, COUNT(*) AS drivers FROM counts GROUP BY robot_id"
+      )
+      .toArray();
+    return Object.fromEntries(rows.map((r) => [r.robot_id, { rides: r.rides, drivers: r.drivers }]));
   }
 
   /** The network leaderboard: rides across every robot, and how many robots driven. */

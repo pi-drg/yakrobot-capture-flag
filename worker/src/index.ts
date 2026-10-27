@@ -1,17 +1,19 @@
 import { Hono } from "hono";
 import { isHex, zeroAddress } from "viem";
 import { captureFlagAbi } from "./abi";
+import { AdminError, checkOwner, parseAdminMessage, readOwner } from "./admin";
 import { cooldownRemaining, publicClientFor, readCooldown, rpcUrlOf } from "./chain";
 import { type Config, findRobot, loadConfig, type Robot } from "./config";
 import { CaptureShapeError, DOMAIN_NAME, DOMAIN_VERSION, parseTypedData, recoverPlayer } from "./eip712";
 import { type GatewayState, readGatewayState } from "./gateway";
 import { RELAYER_NAME } from "./relayer";
+import adminPage from "../static/admin.html";
 import claimPage from "../static/claim.html";
 import indexPage from "../static/index.html";
 
 export { Relayer } from "./relayer";
 
-// Routes still to come: /admin (W2a), /health (W6).
+// Routes still to come: /health (W6).
 const app = new Hono<{ Bindings: Env; Variables: { config: Config } }>();
 
 /** design G3: how long after a capture its ride can still start, the gateway's default. */
@@ -67,6 +69,66 @@ app.get("/r/:robot", (c) => {
   }).replace(/</g, "\\u003c");
   // A function replacement, so `$` in a label isn't read as a pattern.
   return c.html(claimPage.replace("__ROBOT__", () => data));
+});
+
+app.get("/admin", (c) => c.html(adminPage));
+
+/** What the admin page shows: the switches and each robot's counts (design W7). */
+async function adminState(env: Env, config: Config) {
+  const stub = relayer(env);
+  const [switches, totals] = await Promise.all([stub.switches(), stub.robotTotals()]);
+  return {
+    chainId: config.chainId,
+    contract: config.contract,
+    paused: switches.paused,
+    robots: config.robots.map((r) => ({
+      slug: r.slug,
+      label: r.label,
+      place: r.place,
+      disabled: switches.disabled.includes(r.slug),
+      rides: totals[r.robotId]?.rides ?? 0,
+      drivers: totals[r.robotId]?.drivers ?? 0,
+    })),
+  };
+}
+
+app.get("/admin/state", async (c) => {
+  const config = c.get("config");
+  let owner: string | null = null;
+  try {
+    owner = await readOwner(publicClientFor(config, rpcUrlOf(c.env)), config);
+  } catch {
+    // The page can still show the state; signing will tell it the chain is down.
+  }
+  return c.json({ ...(await adminState(c.env, config)), owner });
+});
+
+/** design W7: parse, check the time, check the owner's signature, then switch. */
+app.post("/admin/state", async (c) => {
+  const config = c.get("config");
+  let body: { message?: unknown; signature?: unknown };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "body must be JSON {message, signature}" }, 400);
+  }
+  try {
+    const cmd = parseAdminMessage(config, body.message, Math.floor(Date.now() / 1000));
+    try {
+      await checkOwner(publicClientFor(config, rpcUrlOf(c.env)), config, body.message as string, body.signature);
+    } catch (err) {
+      if (err instanceof AdminError) throw err;
+      return c.json({ error: "chain unavailable, try again shortly" }, 503);
+    }
+    const on = cmd.action === "pause" || cmd.action === "disable";
+    if (!(await relayer(c.env).applySwitch(cmd.target, on, cmd.issued))) {
+      throw new AdminError(400, "a newer change was already applied, sign again");
+    }
+  } catch (err) {
+    if (err instanceof AdminError) return c.json({ error: err.message }, err.status);
+    throw err;
+  }
+  return c.json(await adminState(c.env, config));
 });
 
 app.get("/health", (c) => c.json({ ok: true, chain: c.env.CHAIN }));

@@ -14,6 +14,8 @@
 	"compatibility_date": "2026-09-01",
 	"workers_dev": true,
 	"preview_urls": false,
+	// Pages are single-file HTML imported as strings (design W5).
+	"rules": [{ "type": "Text", "globs": ["**/*.html"], "fallthrough": false }],
 	// Public constants only (design W1). RELAYER_PRIVATE_KEY and RPC_URL are `wrangler secret put` in
 	// production and `.dev.vars` (gitignored) locally — never here.
 	"vars": {

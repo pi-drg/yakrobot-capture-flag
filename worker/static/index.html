@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Capture the Flag · YakRobot</title>
+    <meta name="description" content="Drive a real robot somewhere in the world for five minutes. Capture its flag on-chain, free, and the robot is yours to drive." />
+    <meta name="theme-color" content="#0064ff" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Lora:ital,wght@0,400;0,500;1,400&family=Outfit:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <style>
+      /* Brand tokens from yakrobot.com (Protocolized). */
+      :root {
+        --primary: #0064ff;
+        --primary-pressed: #004fcc;
+        --primary-light-bg: #e6efff;
+        --on-primary: #ffffff;
+        --secondary: #0f6e56;
+        --secondary-deep: #085041;
+        --secondary-light-bg: #e1f5ee;
+        --accent: #d85a30;
+        --accent-bg: #faece7;
+        --canvas: #f9f8f5;
+        --surface-white: #ffffff;
+        --surface-muted: #f3f4f6;
+        --hairline: #e5e7eb;
+        --hairline-soft: #f3f4f6;
+        --ink-dark: #2c2c2a;
+        --ink-secondary: #5f5e5a;
+        --font-serif: "Instrument Serif", Georgia, serif;
+        --font-body: "Lora", Georgia, serif;
+        --font-sans: "Outfit", system-ui, sans-serif;
+        --font-mono: "JetBrains Mono", "Courier New", monospace;
+        --radius-md: 8px;
+        --radius-pill: 9999px;
+        --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+        --maxw: 1120px;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--canvas);
+        color: var(--ink-dark);
+        font-family: var(--font-body);
+        font-size: 16px;
+        line-height: 1.55;
+        -webkit-font-smoothing: antialiased;
+      }
+      a { color: inherit; text-decoration: none; }
+      h1, h2, h3 {
+        font-family: var(--font-serif);
+        font-weight: 400;
+        margin: 0;
+        letter-spacing: -0.01em;
+        line-height: 1.05;
+      }
+      a:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; border-radius: 4px; }
+      .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 24px; }
+      .eyebrow {
+        font-family: var(--font-sans);
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--ink-secondary);
+        margin: 0;
+      }
+      .mono { font-family: var(--font-mono); }
+
+      /* nav */
+      header.nav {
+        position: sticky;
+        top: 0;
+        z-index: 50;
+        background: rgba(255, 255, 255, 0.86);
+        backdrop-filter: saturate(140%) blur(8px);
+        border-bottom: 1px solid var(--hairline);
+      }
+      .nav-inner { height: 64px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+      .brand { display: flex; align-items: center; gap: 11px; }
+      .pmark { width: 24px; height: 27px; flex: none; color: var(--primary); }
+      .pmark path { stroke: currentColor; stroke-width: 46; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+      .brand-name { font-family: var(--font-serif); font-size: 21px; line-height: 1; }
+      .nav-link { font-family: var(--font-sans); font-size: 14px; padding: 8px 12px; border-radius: 6px; }
+      .nav-link:hover { color: var(--primary); }
+
+      /* hero */
+      .hero { padding: 72px 0 56px; border-bottom: 1px solid var(--hairline-soft); }
+      .hero h1 { font-size: clamp(44px, 7vw, 78px); letter-spacing: -0.025em; line-height: 0.96; margin-top: 14px; }
+      .tagline {
+        font-family: var(--font-serif);
+        font-style: italic;
+        font-size: clamp(22px, 3.2vw, 30px);
+        color: var(--primary);
+        line-height: 1.15;
+        margin: 12px 0 0;
+      }
+      .lead { font-size: 18px; line-height: 1.62; color: var(--ink-secondary); max-width: 52ch; margin: 22px 0 0; }
+      .steps {
+        margin-top: 28px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 22px;
+        font-family: var(--font-sans);
+        font-size: 13px;
+        color: var(--ink-secondary);
+        padding: 0;
+        list-style: none;
+      }
+      .steps li { display: inline-flex; align-items: center; gap: 7px; }
+      .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--secondary); flex: none; }
+      .dot.blue { background: var(--primary); }
+      .dot.rust { background: var(--accent); }
+
+      /* paused notice */
+      .notice {
+        margin-top: 28px;
+        padding: 14px 18px;
+        border: 1px solid var(--accent);
+        background: var(--accent-bg);
+        color: var(--ink-dark);
+        border-radius: var(--radius-md);
+        font-family: var(--font-sans);
+        font-size: 15px;
+      }
+
+      /* sections */
+      section.band { padding: 56px 0; }
+      .sec-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
+      .sec-head h2 { font-size: clamp(28px, 4.4vw, 40px); letter-spacing: -0.02em; margin-top: 8px; }
+      .refreshed { font-family: var(--font-sans); font-size: 13px; color: var(--ink-secondary); }
+
+      /* robot cards */
+      .robots { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 18px; }
+      .rcard {
+        background: var(--surface-white);
+        border: 1px solid var(--hairline);
+        border-radius: var(--radius-md);
+        padding: 22px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+      }
+      a.rcard:hover { border-color: var(--primary); box-shadow: var(--shadow-sm); transform: translateY(-2px); }
+      .rcard.idle { background: var(--surface-muted); }
+      .rcard .top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+      .place { font-family: var(--font-sans); font-size: 11px; font-weight: 600; letter-spacing: 0.13em; text-transform: uppercase; color: var(--ink-secondary); }
+      .rcard h3 { font-size: 26px; line-height: 1.1; }
+      .badge {
+        font-family: var(--font-sans);
+        font-size: 11.5px;
+        font-weight: 500;
+        border-radius: var(--radius-pill);
+        padding: 2px 11px;
+        white-space: nowrap;
+      }
+      .badge.free { background: var(--secondary-light-bg); color: var(--secondary-deep); }
+      .badge.busy { background: var(--accent-bg); color: var(--accent); }
+      .badge.off { background: var(--hairline-soft); color: var(--ink-secondary); border: 1px solid var(--hairline); }
+      .cta { margin-top: auto; padding-top: 6px; font-family: var(--font-sans); font-size: 14px; color: var(--primary); }
+      .cta .a { display: inline-block; transition: transform 0.15s ease; }
+      a.rcard:hover .cta .a { transform: translateX(3px); }
+      .muted { font-family: var(--font-sans); font-size: 14px; color: var(--ink-secondary); }
+
+      /* leaderboard */
+      .board { background: var(--surface-white); border: 1px solid var(--hairline); border-radius: var(--radius-md); overflow: hidden; }
+      .board table { width: 100%; border-collapse: collapse; font-family: var(--font-sans); font-size: 15px; }
+      .board th {
+        text-align: left;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.13em;
+        text-transform: uppercase;
+        color: var(--ink-secondary);
+        padding: 12px 18px;
+        border-bottom: 1px solid var(--hairline);
+      }
+      .board td { padding: 12px 18px; border-bottom: 1px solid var(--hairline-soft); }
+      .board tr:last-child td { border-bottom: 0; }
+      .board .num { text-align: right; font-variant-numeric: tabular-nums; }
+      .board .rank { width: 3em; color: var(--ink-secondary); }
+      .board tr.first td { background: var(--primary-light-bg); }
+      .board a:hover { color: var(--primary); }
+      .empty { padding: 22px 18px; }
+
+      footer.site { border-top: 1px solid var(--hairline); padding: 32px 0 48px; }
+      footer .row { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-family: var(--font-sans); font-size: 13px; color: var(--ink-secondary); }
+      footer a { text-decoration: underline; text-underline-offset: 2px; }
+      footer a:hover { color: var(--primary); }
+
+      @media (max-width: 600px) {
+        .wrap { padding: 0 16px; }
+        .hero { padding: 48px 0 40px; }
+        .board th, .board td { padding: 10px 12px; }
+        .board .robots-col { display: none; }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="nav">
+      <div class="wrap nav-inner">
+        <a class="brand" href="/" aria-label="Capture the Flag — home">
+          <svg class="pmark" viewBox="125 205 670 747" aria-hidden="true">
+            <g transform="rotate(180, 500, 500) scale(-1, 1) translate(-1000, 0)">
+              <path d="M 676.970 676.855 C 579.388 774.437 420.613 774.439 323.030 676.856 C 312.127 665.954 302.514 654.254 294.048 641.995 L 197.681 641.995 L 197.681 724.133 C 197.681 738.504 186.029 750.156 171.657 750.156 C 157.287 750.156 145.634 738.504 145.634 724.133 L 145.634 94.293 C 145.634 79.919 157.287 68.270 171.657 68.270 C 186.029 68.270 197.681 79.919 197.681 94.293 L 197.681 589.949 L 266.574 589.949 C 232.183 500.423 250.957 394.987 323.030 322.915 C 420.611 225.333 579.387 225.334 676.969 322.916 C 774.552 420.499 774.552 579.273 676.970 676.855 Z" />
+              <path d="M 359.832 640.054 C 437.120 717.341 562.879 717.342 640.168 640.053 C 717.455 562.767 717.455 437.006 640.167 359.719" />
+            </g>
+          </svg>
+          <span class="brand-name">YakRobot</span>
+        </a>
+        <a class="nav-link" href="https://yakrobot.com" rel="noopener">yakrobot.com</a>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="wrap">
+          <p class="eyebrow">A YakRobot game · Base Sepolia test network</p>
+          <h1>Capture the Flag</h1>
+          <p class="tagline">Drive a real robot, anywhere in the world.</p>
+          <p class="lead">
+            Pick a robot that's free, capture its flag with one free signature from your wallet,
+            and it's yours to drive for five minutes. Every capture is recorded on-chain; nothing
+            is bought, sold or sent to you.
+          </p>
+          <ul class="steps">
+            <li><span class="dot blue"></span>Pick a free robot</li>
+            <li><span class="dot"></span>Sign to capture (no gas)</li>
+            <li><span class="dot rust"></span>Drive for 5 minutes</li>
+          </ul>
+          <div class="notice" id="paused" hidden>
+            The game is paused for a moment, back soon. The leaderboard is still below.
+          </div>
+        </div>
+      </section>
+
+      <section class="band" id="robots-band">
+        <div class="wrap">
+          <div class="sec-head">
+            <div>
+              <p class="eyebrow">The robots</p>
+              <h2>Who's free to drive</h2>
+            </div>
+            <span class="refreshed" id="refreshed" aria-live="polite"></span>
+          </div>
+          <div class="robots" id="robots"><p class="muted">Checking the robots…</p></div>
+        </div>
+      </section>
+
+      <section class="band" id="board-band" style="padding-top: 0">
+        <div class="wrap">
+          <div class="sec-head">
+            <div>
+              <p class="eyebrow">Across every robot</p>
+              <h2>Leaderboard</h2>
+            </div>
+          </div>
+          <div class="board" id="board"><p class="muted empty">Loading…</p></div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site">
+      <div class="wrap row">
+        <span>Robots run by friends of the <a href="https://yakrobot.com" rel="noopener">YakRobot</a> project, when they have time.</span>
+        <span id="contract"></span>
+      </div>
+    </footer>
+
+    <script>
+      "use strict";
+      var EXPLORER = "https://sepolia.basescan.org";
+      var ORDER = { free: 0, busy: 1, offline: 2, unreachable: 2, disabled: 3 };
+
+      function el(tag, attrs, children) {
+        var node = document.createElement(tag);
+        for (var k in attrs || {}) {
+          if (k === "class") node.className = attrs[k];
+          else node.setAttribute(k, attrs[k]);
+        }
+        (children || []).forEach(function (c) {
+          node.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+        });
+        return node;
+      }
+      function short(addr) {
+        return addr.slice(0, 6) + "…" + addr.slice(-4);
+      }
+      function clock(unix) {
+        return new Date(unix * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      }
+
+      function badge(r) {
+        if (r.state === "free") return el("span", { class: "badge free" }, ["Free"]);
+        if (r.state === "busy") return el("span", { class: "badge busy" }, ["Busy until " + clock(r.until)]);
+        if (r.state === "disabled") return el("span", { class: "badge off" }, ["Disabled"]);
+        return el("span", { class: "badge off" }, ["Offline"]);
+      }
+
+      function card(r) {
+        var drivable = r.state === "free" || r.state === "busy";
+        var body = [
+          el("div", { class: "top" }, [el("span", { class: "place" }, [r.place]), badge(r)]),
+          el("h3", {}, [r.label]),
+        ];
+        if (drivable) {
+          body.push(
+            el("span", { class: "cta" }, [
+              r.state === "free" ? "Capture & drive " : "See who's driving ",
+              el("span", { class: "a" }, ["→"]),
+            ])
+          );
+          return el("a", { class: "rcard", href: "/r/" + encodeURIComponent(r.slug) }, body);
+        }
+        body.push(el("span", { class: "muted" }, ["Not running right now. Check back later."]));
+        return el("a", { class: "rcard idle", href: "/r/" + encodeURIComponent(r.slug) }, body);
+      }
+
+      async function loadRobots() {
+        var box = document.getElementById("robots");
+        try {
+          var res = await fetch("/robots", { cache: "no-store" });
+          if (!res.ok) throw new Error(res.status);
+          var data = await res.json();
+          document.getElementById("paused").hidden = !data.paused;
+          document.getElementById("robots-band").hidden = !!data.paused;
+          var robots = data.robots.slice().sort(function (a, b) {
+            return (ORDER[a.state] ?? 9) - (ORDER[b.state] ?? 9);
+          });
+          box.replaceChildren.apply(
+            box,
+            robots.length ? robots.map(card) : [el("p", { class: "muted" }, ["No robots yet."])]
+          );
+          document.getElementById("refreshed").textContent = "Updated " + clock(Date.now() / 1000);
+        } catch (e) {
+          box.replaceChildren(el("p", { class: "muted" }, ["Couldn't reach the game. Retrying…"]));
+        }
+      }
+
+      async function loadBoard() {
+        var box = document.getElementById("board");
+        var res;
+        try {
+          res = await fetch("/leaderboard", { cache: "no-store" });
+        } catch (e) {
+          return;
+        }
+        if (!res.ok) {
+          box.replaceChildren(el("p", { class: "muted empty" }, ["No rides yet. Be the first."]));
+          return;
+        }
+        var data = await res.json();
+        if (data.contract) {
+          document.getElementById("contract").replaceChildren(
+            "Contract ",
+            el("a", { class: "mono", href: EXPLORER + "/address/" + data.contract, target: "_blank", rel: "noopener" }, [short(data.contract)])
+          );
+        }
+        if (!data.top || !data.top.length) {
+          box.replaceChildren(el("p", { class: "muted empty" }, ["No rides yet. Be the first."]));
+          return;
+        }
+        var rows = data.top.map(function (p, i) {
+          return el("tr", { class: i === 0 ? "first" : "" }, [
+            el("td", { class: "rank" }, [String(i + 1)]),
+            el("td", {}, [
+              el("a", { class: "mono", href: EXPLORER + "/address/" + p.player, target: "_blank", rel: "noopener" }, [short(p.player)]),
+            ]),
+            el("td", { class: "num robots-col" }, [String(p.robots)]),
+            el("td", { class: "num" }, [String(p.rides)]),
+          ]);
+        });
+        box.replaceChildren(
+          el("table", {}, [
+            el("thead", {}, [
+              el("tr", {}, [
+                el("th", {}, ["#"]),
+                el("th", {}, ["Driver"]),
+                el("th", { class: "num robots-col" }, ["Robots"]),
+                el("th", { class: "num" }, ["Rides"]),
+              ]),
+            ]),
+            el("tbody", {}, rows),
+          ])
+        );
+      }
+
+      loadRobots();
+      loadBoard();
+      setInterval(loadRobots, 30000);
+      setInterval(loadBoard, 30000);
+    </script>
+  </body>
+</html>

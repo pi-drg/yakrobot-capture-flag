@@ -1,8 +1,9 @@
 import { Hono } from "hono";
 import { type Config, findRobot, loadConfig } from "./config";
 import { readGatewayState } from "./gateway";
+import indexPage from "../static/index.html";
 
-// Routes still to come: /, /capture, /r/:robot (page), /admin (W2–W2a), /health (W6).
+// Routes still to come: /capture, /r/:robot (page), /admin (W2–W2a), /health (W6).
 const app = new Hono<{ Bindings: Env; Variables: { config: Config } }>();
 
 // Vars only change on deploy, so parse them once per isolate; the key is the env object.
@@ -17,6 +18,8 @@ app.use("*", async (c, next) => {
   c.set("config", config);
   await next();
 });
+
+app.get("/", (c) => c.html(indexPage));
 
 app.get("/health", (c) => c.json({ ok: true, chain: c.env.CHAIN }));
 

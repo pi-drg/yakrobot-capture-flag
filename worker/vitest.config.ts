@@ -21,5 +21,8 @@ export default defineConfig({
   ],
   test: {
     globalSetup: ["./test/global-setup.ts"],
+    // One anvil and one relayer key for every file: capture.test.ts and stuck.test.ts both
+    // send from it and toggle automine, so files run one at a time.
+    fileParallelism: false,
   },
 });

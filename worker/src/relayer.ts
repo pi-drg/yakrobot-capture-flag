@@ -1,10 +1,13 @@
 import { DurableObject } from "cloudflare:workers";
 import {
   BaseError,
+  type Chain,
   ContractFunctionRevertedError,
   createWalletClient,
   http,
+  type HttpTransport,
   type PublicClient,
+  type WalletClient,
 } from "viem";
 import { privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
 import { captureFlagAbi } from "./abi";
@@ -21,7 +24,9 @@ import type { Capture } from "./eip712";
  *
  * The log is written when a transaction is sent, not when it's mined. Simulation and the
  * in-flight cooldown check below make a later revert rare (a deadline passing while
- * pending is the main case), and scripts/rebuild-drivers.ts is the repair if one happens.
+ * pending is the main case). Each send is also kept in `pending` until mined: an alarm
+ * re-sends one stuck for STUCK_BLOCKS with higher fees, or, if it would now revert,
+ * replaces it with a no-op so later nonces aren't blocked, and takes it out of the log.
  */
 
 export const RELAYER_NAME = "relayer";
@@ -42,6 +47,24 @@ export interface Ranked {
 }
 
 const PRIVATE_KEY_RE = /^0x[0-9a-fA-F]{64}$/;
+/** design W4: re-send after this many blocks unmined (about 20 s on Base)... */
+const STUCK_BLOCKS = 10n;
+/** ...with fees up 25%, at most this many times, then give up and log it. */
+const MAX_RESENDS = 3;
+const ALARM_MS = 30_000;
+
+type PendingRow = {
+  nonce: number;
+  /** The captures row this send logged; 0 once it was replaced by a no-op. */
+  seq: number;
+  capture: string;
+  sig: string;
+  /** JSON array, oldest first: any of them may be the one that gets mined. */
+  hashes: string;
+  /** -1 if the block number couldn't be read at send time. */
+  sent_block: number;
+  tries: number;
+};
 // Errors a send can hit when our stored nonce has drifted from the chain's.
 const NONCE_DRIFT_RE = /nonce too low|nonce has already been used|replacement transaction underpriced|already known/i;
 
@@ -74,6 +97,10 @@ export class Relayer extends DurableObject<Env> {
         player TEXT PRIMARY KEY, n INTEGER NOT NULL, reached INTEGER NOT NULL
       );
       CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS pending (
+        nonce INTEGER PRIMARY KEY, seq INTEGER NOT NULL, capture TEXT NOT NULL, sig TEXT NOT NULL,
+        hashes TEXT NOT NULL, sent_block INTEGER NOT NULL, tries INTEGER NOT NULL
+      );
     `);
   }
 
@@ -193,8 +220,128 @@ export class Relayer extends DurableObject<Env> {
       txHash = await wallet.writeContract({ ...request, nonce });
     }
     this.sql.exec("INSERT OR REPLACE INTO kv (key, value) VALUES ('nonce', ?)", String(nonce + 1));
-    this.record(slug, c, txHash, now);
+    const seq = this.record(slug, c, txHash, now);
+    let sentBlock = -1;
+    try {
+      sentBlock = Number(await client.getBlockNumber());
+    } catch {
+      // The alarm fills it in.
+    }
+    this.sql.exec(
+      "INSERT OR REPLACE INTO pending (nonce, seq, capture, sig, hashes, sent_block, tries) VALUES (?, ?, ?, ?, ?, ?, 0)",
+      nonce,
+      seq,
+      JSON.stringify({ ...c, nonce: String(c.nonce), deadline: String(c.deadline) }),
+      signature,
+      JSON.stringify([txHash]),
+      sentBlock
+    );
+    if ((await this.ctx.storage.getAlarm()) === null) await this.ctx.storage.setAlarm(Date.now() + ALARM_MS);
     return { ok: true, txHash };
+  }
+
+  // ---- stuck transactions (design W4) ----
+
+  /** Serialised with captures, since a re-send reuses a nonce. */
+  async alarm(): Promise<void> {
+    const run = this.lock.then(() => this.checkPending());
+    this.lock = run.catch(() => undefined);
+    await run;
+  }
+
+  private async checkPending(): Promise<void> {
+    try {
+      const rows = this.sql.exec<PendingRow>("SELECT * FROM pending ORDER BY nonce").toArray();
+      if (!rows.length) return;
+      const account = this.relayerAccount();
+      const rpcUrl = rpcUrlOf(this.env);
+      const client = publicClientFor(this.config, rpcUrl);
+      const wallet = createWalletClient({ account, chain: chainFor(this.config, rpcUrl), transport: http(rpcUrl) });
+      const [mined, block] = await Promise.all([
+        client.getTransactionCount({ address: account.address, blockTag: "latest" }),
+        client.getBlockNumber(),
+      ]);
+      for (const row of rows) {
+        if (row.nonce < mined) {
+          await this.settle(client, row);
+        } else if (row.sent_block < 0) {
+          this.sql.exec("UPDATE pending SET sent_block = ? WHERE nonce = ?", Number(block), row.nonce);
+        } else if (block - BigInt(row.sent_block) >= STUCK_BLOCKS) {
+          if (row.tries >= MAX_RESENDS) {
+            console.error("capture-flag: giving up on a stuck transaction", JSON.stringify({ nonce: row.nonce, hashes: row.hashes }));
+            this.sql.exec("DELETE FROM pending WHERE nonce = ?", row.nonce);
+          } else {
+            await this.resend(client, wallet, account, row, block);
+          }
+        }
+      }
+    } finally {
+      if (this.sql.exec("SELECT 1 FROM pending LIMIT 1").toArray().length) {
+        await this.ctx.storage.setAlarm(Date.now() + ALARM_MS);
+      }
+    }
+  }
+
+  /** The nonce is used: find which of our hashes it was, and fix the log to match. */
+  private async settle(client: PublicClient, row: PendingRow): Promise<void> {
+    const hashes = JSON.parse(row.hashes) as `0x${string}`[];
+    let captured = false;
+    for (const hash of [...hashes].reverse()) {
+      const receipt = await client.getTransactionReceipt({ hash }).catch(() => null);
+      if (!receipt) continue;
+      captured = receipt.status === "success";
+      if (row.seq && captured) this.sql.exec("UPDATE captures SET tx = ? WHERE seq = ?", hash, row.seq);
+      break;
+    }
+    // Reverted, or the nonce went to a transaction that isn't ours: no capture happened.
+    if (row.seq && !captured) this.unrecord(row.seq);
+    this.sql.exec("DELETE FROM pending WHERE nonce = ?", row.nonce);
+  }
+
+  private async resend(
+    client: PublicClient,
+    wallet: WalletClient<HttpTransport, Chain, PrivateKeyAccount>,
+    account: PrivateKeyAccount,
+    row: PendingRow,
+    block: bigint
+  ): Promise<void> {
+    const hashes = JSON.parse(row.hashes) as `0x${string}`[];
+    const prev = await client.getTransaction({ hash: hashes.at(-1)! }).catch(() => null);
+    const now = await client.estimateFeesPerGas();
+    const bump = (x: bigint | undefined) => ((x ?? 0n) * 5n) / 4n;
+    const maxPriorityFeePerGas = max(bump(prev?.maxPriorityFeePerGas), now.maxPriorityFeePerGas);
+    const maxFeePerGas = max(bump(prev?.maxFeePerGas), now.maxFeePerGas, maxPriorityFeePerGas);
+    const fees = { nonce: row.nonce, maxFeePerGas, maxPriorityFeePerGas };
+
+    let seq = row.seq;
+    let hash: `0x${string}`;
+    const c = JSON.parse(row.capture) as { robotId: `0x${string}`; player: `0x${string}`; nonce: string; deadline: string };
+    const capture: Capture = { ...c, nonce: BigInt(c.nonce), deadline: BigInt(c.deadline) };
+    try {
+      const call = {
+        address: this.config.contract,
+        abi: captureFlagAbi,
+        functionName: "captureBySig",
+        args: [capture, row.sig as `0x${string}`],
+      } as const;
+      await client.simulateContract({ account, ...call });
+      hash = await wallet.writeContract({ ...call, ...fees });
+    } catch (err) {
+      const reverted =
+        err instanceof BaseError && err.walk((e) => e instanceof ContractFunctionRevertedError);
+      if (!reverted) throw err;
+      // It would revert now (most likely Expired): free the nonce with a no-op instead.
+      hash = await wallet.sendTransaction({ to: account.address, value: 0n, ...fees });
+      if (seq) this.unrecord(seq);
+      seq = 0;
+    }
+    this.sql.exec(
+      "UPDATE pending SET seq = ?, hashes = ?, sent_block = ?, tries = tries + 1 WHERE nonce = ?",
+      seq,
+      JSON.stringify([...hashes, hash]),
+      Number(block),
+      row.nonce
+    );
   }
 
   /** The relayer's public address, for /health; null if the key is missing or malformed. */
@@ -231,7 +378,39 @@ export class Relayer extends DurableObject<Env> {
     return nonce;
   }
 
-  private record(slug: string, c: Capture, tx: string, at: number): void {
+  /** Undo `record`: a logged capture that never made it on-chain. A count's `reached` is
+   * the seq of the capture that brought it there, so it falls back to the latest left. */
+  private unrecord(seq: number): void {
+    const row = this.sql
+      .exec<{ robot_id: string; player: string }>("SELECT robot_id, player FROM captures WHERE seq = ?", seq)
+      .toArray()[0];
+    if (!row) return;
+    this.sql.exec("DELETE FROM captures WHERE seq = ?", seq);
+    const pair = this.sql
+      .exec<{ seq: number }>(
+        "SELECT seq FROM captures WHERE robot_id = ? AND player = ? ORDER BY seq DESC LIMIT 1",
+        row.robot_id,
+        row.player
+      )
+      .toArray()[0];
+    if (pair) {
+      this.sql.exec(
+        "UPDATE counts SET n = n - 1, reached = ? WHERE robot_id = ? AND player = ?",
+        pair.seq,
+        row.robot_id,
+        row.player
+      );
+    } else {
+      this.sql.exec("DELETE FROM counts WHERE robot_id = ? AND player = ?", row.robot_id, row.player);
+    }
+    const mine = this.sql
+      .exec<{ seq: number }>("SELECT seq FROM captures WHERE player = ? ORDER BY seq DESC LIMIT 1", row.player)
+      .toArray()[0];
+    if (mine) this.sql.exec("UPDATE totals SET n = n - 1, reached = ? WHERE player = ?", mine.seq, row.player);
+    else this.sql.exec("DELETE FROM totals WHERE player = ?", row.player);
+  }
+
+  private record(slug: string, c: Capture, tx: string, at: number): number {
     const { robotId, player } = c;
     const seq = this.sql
       .exec<{ seq: number }>(
@@ -257,6 +436,7 @@ export class Relayer extends DurableObject<Env> {
       player,
       seq
     );
+    return seq;
   }
 
   // ---- reads (design W5a) ----
@@ -310,6 +490,10 @@ export class Relayer extends DurableObject<Env> {
       .toArray()
       .map((r) => ({ player: r.player, rides: r.n, robots: r.robots }));
   }
+}
+
+function max(...values: bigint[]): bigint {
+  return values.reduce((a, b) => (b > a ? b : a));
 }
 
 /** Map a simulation revert to the response the visitor sees; anything else rethrows. */

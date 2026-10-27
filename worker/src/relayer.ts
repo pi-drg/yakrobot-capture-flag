@@ -4,6 +4,7 @@ import {
   type Chain,
   ContractFunctionRevertedError,
   createWalletClient,
+  TransactionReceiptNotFoundError,
   http,
   type HttpTransport,
   type PublicClient,
@@ -26,7 +27,9 @@ import type { Capture } from "./eip712";
  * in-flight cooldown check below make a later revert rare (a deadline passing while
  * pending is the main case). Each send is also kept in `pending` until mined: an alarm
  * re-sends one stuck for STUCK_BLOCKS with higher fees, or, if it would now revert,
- * replaces it with a no-op so later nonces aren't blocked, and takes it out of the log.
+ * replaces it with a no-op so later nonces aren't blocked, and marks it reverted. A
+ * reverted row still counts toward the hourly send budget (it cost gas), but not toward
+ * rankings or the cooldown.
  */
 
 export const RELAYER_NAME = "relayer";
@@ -49,7 +52,8 @@ export interface Ranked {
 const PRIVATE_KEY_RE = /^0x[0-9a-fA-F]{64}$/;
 /** design W4: re-send after this many blocks unmined (about 20 s on Base)... */
 const STUCK_BLOCKS = 10n;
-/** ...with fees up 25%, at most this many times, then give up and log it. */
+/** ...with fees up 25%, at most this many times, then give up, log it and leave it for
+ * /health to report. */
 const MAX_RESENDS = 3;
 const ALARM_MS = 30_000;
 
@@ -64,6 +68,8 @@ type PendingRow = {
   /** -1 if the block number couldn't be read at send time. */
   sent_block: number;
   tries: number;
+  /** Unix seconds of the first send. */
+  sent_at: number;
 };
 // Errors a send can hit when our stored nonce has drifted from the chain's.
 const NONCE_DRIFT_RE = /nonce too low|nonce has already been used|replacement transaction underpriced|already known/i;
@@ -82,7 +88,8 @@ export class Relayer extends DurableObject<Env> {
       CREATE TABLE IF NOT EXISTS captures (
         seq INTEGER PRIMARY KEY AUTOINCREMENT,
         slug TEXT NOT NULL, robot_id TEXT NOT NULL, player TEXT NOT NULL,
-        nonce TEXT NOT NULL, tx TEXT NOT NULL, at INTEGER NOT NULL
+        nonce TEXT NOT NULL, tx TEXT NOT NULL, at INTEGER NOT NULL,
+        reverted INTEGER NOT NULL DEFAULT 0
       );
       -- The contract's nonceUsed is per player, across robots.
       CREATE UNIQUE INDEX IF NOT EXISTS captures_nonce ON captures (player, nonce);
@@ -99,7 +106,8 @@ export class Relayer extends DurableObject<Env> {
       CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS pending (
         nonce INTEGER PRIMARY KEY, seq INTEGER NOT NULL, capture TEXT NOT NULL, sig TEXT NOT NULL,
-        hashes TEXT NOT NULL, sent_block INTEGER NOT NULL, tries INTEGER NOT NULL
+        hashes TEXT NOT NULL, sent_block INTEGER NOT NULL, tries INTEGER NOT NULL,
+        sent_at INTEGER NOT NULL
       );
     `);
   }
@@ -179,7 +187,7 @@ export class Relayer extends DurableObject<Env> {
     }
     const last = this.sql
       .exec<{ at: number }>(
-        "SELECT at FROM captures WHERE robot_id = ? AND player = ? ORDER BY seq DESC LIMIT 1",
+        "SELECT at FROM captures WHERE robot_id = ? AND player = ? AND reverted = 0 ORDER BY seq DESC LIMIT 1",
         c.robotId,
         c.player
       )
@@ -227,14 +235,18 @@ export class Relayer extends DurableObject<Env> {
     } catch {
       // The alarm fills it in.
     }
+    // A re-sync can hand out a nonce whose earlier send was dropped: that one is gone.
+    const earlier = this.sql.exec<{ seq: number }>("SELECT seq FROM pending WHERE nonce = ?", nonce).toArray()[0];
+    if (earlier?.seq) this.markReverted(earlier.seq);
     this.sql.exec(
-      "INSERT OR REPLACE INTO pending (nonce, seq, capture, sig, hashes, sent_block, tries) VALUES (?, ?, ?, ?, ?, ?, 0)",
+      "INSERT OR REPLACE INTO pending (nonce, seq, capture, sig, hashes, sent_block, tries, sent_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?)",
       nonce,
       seq,
       JSON.stringify({ ...c, nonce: String(c.nonce), deadline: String(c.deadline) }),
       signature,
       JSON.stringify([txHash]),
-      sentBlock
+      sentBlock,
+      now
     );
     if ((await this.ctx.storage.getAlarm()) === null) await this.ctx.storage.setAlarm(Date.now() + ALARM_MS);
     return { ok: true, txHash };
@@ -251,30 +263,11 @@ export class Relayer extends DurableObject<Env> {
 
   private async checkPending(): Promise<void> {
     try {
-      const rows = this.sql.exec<PendingRow>("SELECT * FROM pending ORDER BY nonce").toArray();
-      if (!rows.length) return;
-      const account = this.relayerAccount();
-      const rpcUrl = rpcUrlOf(this.env);
-      const client = publicClientFor(this.config, rpcUrl);
-      const wallet = createWalletClient({ account, chain: chainFor(this.config, rpcUrl), transport: http(rpcUrl) });
-      const [mined, block] = await Promise.all([
-        client.getTransactionCount({ address: account.address, blockTag: "latest" }),
-        client.getBlockNumber(),
-      ]);
-      for (const row of rows) {
-        if (row.nonce < mined) {
-          await this.settle(client, row);
-        } else if (row.sent_block < 0) {
-          this.sql.exec("UPDATE pending SET sent_block = ? WHERE nonce = ?", Number(block), row.nonce);
-        } else if (block - BigInt(row.sent_block) >= STUCK_BLOCKS) {
-          if (row.tries >= MAX_RESENDS) {
-            console.error("capture-flag: giving up on a stuck transaction", JSON.stringify({ nonce: row.nonce, hashes: row.hashes }));
-            this.sql.exec("DELETE FROM pending WHERE nonce = ?", row.nonce);
-          } else {
-            await this.resend(client, wallet, account, row, block);
-          }
-        }
-      }
+      await this.checkPendingNow();
+    } catch (err) {
+      // Logged and retried on the next alarm, not thrown: a throwing alarm is also retried
+      // by the runtime, on top of the re-arm below.
+      console.error("capture-flag: pending check failed", String(err));
     } finally {
       if (this.sql.exec("SELECT 1 FROM pending LIMIT 1").toArray().length) {
         await this.ctx.storage.setAlarm(Date.now() + ALARM_MS);
@@ -282,19 +275,84 @@ export class Relayer extends DurableObject<Env> {
     }
   }
 
+  private async checkPendingNow(): Promise<void> {
+    const rows = this.sql.exec<PendingRow>("SELECT * FROM pending ORDER BY nonce").toArray();
+    if (!rows.length) return;
+    const account = this.relayerAccount();
+    const rpcUrl = rpcUrlOf(this.env);
+    const client = publicClientFor(this.config, rpcUrl);
+    const wallet = createWalletClient({ account, chain: chainFor(this.config, rpcUrl), transport: http(rpcUrl) });
+    const [mined, block] = await Promise.all([
+      client.getTransactionCount({ address: account.address, blockTag: "latest" }),
+      client.getBlockNumber(),
+    ]);
+    for (const row of rows) {
+      if (row.nonce < mined) {
+        await this.settle(client, row);
+      } else if (row.sent_block < 0) {
+        this.sql.exec("UPDATE pending SET sent_block = ? WHERE nonce = ?", Number(block), row.nonce);
+      } else if (block - BigInt(row.sent_block) >= STUCK_BLOCKS) {
+        if (row.tries === MAX_RESENDS) {
+          // Kept, so a late mine still settles and /health reports it; logged once.
+          console.error("capture-flag: giving up on a stuck transaction", JSON.stringify({ nonce: row.nonce, hashes: row.hashes }));
+          this.sql.exec("UPDATE pending SET tries = tries + 1 WHERE nonce = ?", row.nonce);
+        } else if (row.tries < MAX_RESENDS) {
+          await this.resend(client, wallet, account, row, block);
+        }
+      }
+    }
+  }
+
+  /** For /health: how many sends are unmined, and the oldest one's age. */
+  pendingSummary(): { pending: number; oldestSentAt: number | null } {
+    const row = this.sql
+      .exec<{ n: number; oldest: number | null }>("SELECT COUNT(*) AS n, MIN(sent_at) AS oldest FROM pending")
+      .one();
+    return { pending: row.n, oldestSentAt: row.oldest };
+  }
+
+  /** The current transaction for a player's capture, which the alarm may have replaced;
+   * null if there's none or it never made it on-chain. The robot page polls this. */
+  captureTx(player: string, nonce: string): { tx: string; at: number } | null {
+    const row = this.sql
+      .exec<{ seq: number; tx: string; at: number }>(
+        "SELECT seq, tx, at FROM captures WHERE player = ? AND nonce = ? AND reverted = 0",
+        player.toLowerCase(),
+        nonce
+      )
+      .toArray()[0];
+    if (!row) return null;
+    // Unmined: its latest send. The log's tx is fixed up when it settles.
+    const pending = this.sql.exec<{ hashes: string }>("SELECT hashes FROM pending WHERE seq = ?", row.seq).toArray()[0];
+    const tx = pending ? (JSON.parse(pending.hashes) as string[]).at(-1)! : row.tx;
+    return { tx, at: row.at };
+  }
+
   /** The nonce is used: find which of our hashes it was, and fix the log to match. */
   private async settle(client: PublicClient, row: PendingRow): Promise<void> {
     const hashes = JSON.parse(row.hashes) as `0x${string}`[];
     let captured = false;
     for (const hash of [...hashes].reverse()) {
-      const receipt = await client.getTransactionReceipt({ hash }).catch(() => null);
-      if (!receipt) continue;
-      captured = receipt.status === "success";
+      let receipt;
+      try {
+        receipt = await client.getTransactionReceipt({ hash });
+      } catch (err) {
+        // Only "no such receipt" means not this one; any other error leaves the row for
+        // the next alarm rather than guessing.
+        if (err instanceof BaseError && err.walk((e) => e instanceof TransactionReceiptNotFoundError)) continue;
+        throw err;
+      }
+      const isCapture = receipt.to?.toLowerCase() === this.config.contract.toLowerCase();
+      captured = isCapture && receipt.status === "success";
       if (row.seq && captured) this.sql.exec("UPDATE captures SET tx = ? WHERE seq = ?", hash, row.seq);
+      if (!row.seq && captured) {
+        // The original beat its no-op: on-chain, but out of the log.
+        console.warn("capture-flag: a capture marked reverted was mined", JSON.stringify({ nonce: row.nonce, hash }));
+      }
       break;
     }
     // Reverted, or the nonce went to a transaction that isn't ours: no capture happened.
-    if (row.seq && !captured) this.unrecord(row.seq);
+    if (row.seq && !captured) this.markReverted(row.seq);
     this.sql.exec("DELETE FROM pending WHERE nonce = ?", row.nonce);
   }
 
@@ -332,7 +390,7 @@ export class Relayer extends DurableObject<Env> {
       if (!reverted) throw err;
       // It would revert now (most likely Expired): free the nonce with a no-op instead.
       hash = await wallet.sendTransaction({ to: account.address, value: 0n, ...fees });
-      if (seq) this.unrecord(seq);
+      if (seq) this.markReverted(seq);
       seq = 0;
     }
     this.sql.exec(
@@ -378,17 +436,21 @@ export class Relayer extends DurableObject<Env> {
     return nonce;
   }
 
-  /** Undo `record`: a logged capture that never made it on-chain. A count's `reached` is
+  /** Undo `record`'s counts for a logged capture that never made it on-chain. The row
+   * stays, marked, so the hourly budget still counts the send. A count's `reached` is
    * the seq of the capture that brought it there, so it falls back to the latest left. */
-  private unrecord(seq: number): void {
+  private markReverted(seq: number): void {
     const row = this.sql
-      .exec<{ robot_id: string; player: string }>("SELECT robot_id, player FROM captures WHERE seq = ?", seq)
+      .exec<{ robot_id: string; player: string }>(
+        "SELECT robot_id, player FROM captures WHERE seq = ? AND reverted = 0",
+        seq
+      )
       .toArray()[0];
     if (!row) return;
-    this.sql.exec("DELETE FROM captures WHERE seq = ?", seq);
+    this.sql.exec("UPDATE captures SET reverted = 1 WHERE seq = ?", seq);
     const pair = this.sql
       .exec<{ seq: number }>(
-        "SELECT seq FROM captures WHERE robot_id = ? AND player = ? ORDER BY seq DESC LIMIT 1",
+        "SELECT seq FROM captures WHERE robot_id = ? AND player = ? AND reverted = 0 ORDER BY seq DESC LIMIT 1",
         row.robot_id,
         row.player
       )
@@ -404,7 +466,10 @@ export class Relayer extends DurableObject<Env> {
       this.sql.exec("DELETE FROM counts WHERE robot_id = ? AND player = ?", row.robot_id, row.player);
     }
     const mine = this.sql
-      .exec<{ seq: number }>("SELECT seq FROM captures WHERE player = ? ORDER BY seq DESC LIMIT 1", row.player)
+      .exec<{ seq: number }>(
+        "SELECT seq FROM captures WHERE player = ? AND reverted = 0 ORDER BY seq DESC LIMIT 1",
+        row.player
+      )
       .toArray()[0];
     if (mine) this.sql.exec("UPDATE totals SET n = n - 1, reached = ? WHERE player = ?", mine.seq, row.player);
     else this.sql.exec("DELETE FROM totals WHERE player = ?", row.player);
@@ -446,7 +511,7 @@ export class Relayer extends DurableObject<Env> {
   drivers(robotId: string, limit: number): { recent: Driver[]; top: Ranked[]; rides: number; drivers: number } {
     const recent = this.sql
       .exec<{ player: string; tx: string; at: number }>(
-        "SELECT player, tx, at FROM captures WHERE robot_id = ? ORDER BY seq DESC LIMIT ?",
+        "SELECT player, tx, at FROM captures WHERE robot_id = ? AND reverted = 0 ORDER BY seq DESC LIMIT ?",
         robotId,
         limit
       )

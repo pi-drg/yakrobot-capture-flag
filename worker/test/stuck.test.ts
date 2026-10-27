@@ -1,8 +1,9 @@
-import { env, runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
+import { env, runDurableObjectAlarm, runInDurableObject, SELF } from "cloudflare:test";
 import { createPublicClient, defineChain, http, type Hex } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
-import { afterEach, beforeAll, describe, expect, it } from "vitest";
-import { robotIdFor } from "../src/config";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { loadConfig, robotIdFor } from "../src/config";
+import { checkHealth } from "../src/health";
 import { CAPTURE_TYPES, DOMAIN_NAME, DOMAIN_VERSION } from "../src/eip712";
 import { type Relayer, RELAYER_NAME } from "../src/relayer";
 import { ANVIL_CHAIN_ID, ANVIL_RPC, anvilRpc, CONTRACT_ADDRESS, RELAYER_ADDRESS } from "./anvil";
@@ -25,7 +26,8 @@ async function signed(secondsAhead: number) {
   const { timestamp } = await client.getBlock();
   const message = {
     robotId: ROBOT_ID,
-    player: privateKeyToAccount(key).address,
+    // Lowercase, as the Worker hands it to the DO.
+    player: privateKeyToAccount(key).address.toLowerCase() as Hex,
     nonce: BigInt(Date.now()),
     deadline: timestamp + BigInt(secondsAhead),
   };
@@ -52,6 +54,14 @@ async function sendAndDrop(secondsAhead: number) {
 
 const sql = <T extends Record<string, SqlStorageValue>>(query: string, ...args: SqlStorageValue[]) =>
   runInDurableObject(relayer(), (_: Relayer, state: DurableObjectState) => state.storage.sql.exec<T>(query, ...args).toArray());
+
+/** What the robot page polls: the capture's current transaction, or 404. */
+async function current(message: { player: string; nonce: bigint }) {
+  const res = await SELF.fetch(
+    `https://capture-flag.test/r/status/capture?player=${message.player}&nonce=${message.nonce}`
+  );
+  return { code: res.status, body: (await res.json()) as { tx?: string } };
+}
 
 beforeAll(() => setGamePaused(false));
 afterEach(() => anvilRpc("evm_setAutomine", [true]));
@@ -86,6 +96,8 @@ describe("stuck transactions (design W4)", () => {
     expect(resent.nonce).toBe(nonce);
     expect(resent.from.toLowerCase()).toBe(RELAYER_ADDRESS.toLowerCase());
     expect((await client.waitForTransactionReceipt({ hash: second })).status).toBe("success");
+    // The page is pointed at the new hash before the log is settled.
+    expect(await current(message)).toEqual({ code: 200, body: { tx: second, at: expect.any(Number) } });
 
     // The next alarm sees the nonce used and points the log at the hash that landed.
     await runDurableObjectAlarm(relayer());
@@ -94,9 +106,9 @@ describe("stuck transactions (design W4)", () => {
     expect(logged).toEqual([{ tx: second }]);
   });
 
-  it("replaces one that would now revert with a no-op, and takes it out of the log", async () => {
+  it("replaces one that would now revert with a no-op, and takes it out of the rankings", async () => {
     const { message } = await sendAndDrop(4);
-    const before = await sql<{ n: number }>("SELECT COUNT(*) AS n FROM captures");
+    expect((await current(message)).code).toBe(200);
 
     // Ten 2 s blocks, as on Base, move the chain's clock past the 4 s deadline.
     await anvilRpc("anvil_mine", ["0xa", "0x2"]);
@@ -107,10 +119,16 @@ describe("stuck transactions (design W4)", () => {
     expect(noop.to?.toLowerCase()).toBe(RELAYER_ADDRESS.toLowerCase());
     expect(noop.value).toBe(0n);
 
-    expect(await sql("SELECT 1 FROM captures WHERE player = ?", message.player)).toHaveLength(0);
+    // Still logged, so the hourly budget counts the gas spent, but marked reverted.
+    expect(await sql("SELECT reverted FROM captures WHERE player = ?", message.player)).toEqual([{ reverted: 1 }]);
     expect(await sql("SELECT 1 FROM counts WHERE player = ?", message.player)).toHaveLength(0);
     expect(await sql("SELECT 1 FROM totals WHERE player = ?", message.player)).toHaveLength(0);
-    expect((await sql<{ n: number }>("SELECT COUNT(*) AS n FROM captures"))[0].n).toBe(before[0].n - 1);
+    const drivers = (await (await SELF.fetch("https://capture-flag.test/r/status/drivers")).json()) as {
+      recent: Array<{ player: string }>;
+    };
+    expect(drivers.recent.map((r) => r.player)).not.toContain(message.player);
+    // The page stops waiting and says it didn't go through.
+    expect((await current(message)).code).toBe(404);
 
     await runDurableObjectAlarm(relayer());
     expect(await sql("SELECT nonce FROM pending")).toHaveLength(0);
@@ -120,5 +138,35 @@ describe("stuck transactions (design W4)", () => {
     const result = await relayer().capture("status", next.message, next.sig, 600);
     expect(result.ok).toBe(true);
     if (result.ok) expect((await client.waitForTransactionReceipt({ hash: result.txHash })).status).toBe("success");
+  });
+
+  // Last in the file: it leaves the relayer's nonce stuck on purpose.
+  it("gives up after 3 re-sends, logs once, and /health reports it", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    await runDurableObjectAlarm(relayer()); // settle the last test's capture
+    await sendAndDrop(300);
+    await anvilRpc("evm_setAutomine", [false]);
+    for (let i = 0; i < 3; i++) {
+      await anvilRpc("anvil_mine", ["0xa", "0x2"]);
+      await runDurableObjectAlarm(relayer());
+      const [row] = await sql<{ hashes: string }>("SELECT hashes FROM pending");
+      await anvilRpc("anvil_dropTransaction", [(JSON.parse(row.hashes) as Hex[]).at(-1)]);
+    }
+    expect(await sql<{ tries: number }>("SELECT tries FROM pending")).toEqual([{ tries: 3 }]);
+    await anvilRpc("anvil_mine", ["0xa", "0x2"]);
+    await runDurableObjectAlarm(relayer());
+    await anvilRpc("anvil_mine", ["0xa", "0x2"]);
+    await runDurableObjectAlarm(relayer());
+    const giveUps = error.mock.calls.filter((call) => String(call[0]).includes("giving up"));
+    expect(giveUps).toHaveLength(1);
+    expect(await sql("SELECT nonce FROM pending")).toHaveLength(1);
+
+    // Pretend it has waited 10 minutes.
+    await sql("UPDATE pending SET sent_at = sent_at - 600");
+    const config = loadConfig(env as unknown as Record<string, string | undefined>);
+    const health = await checkHealth(env, config, relayer(), { fresh: true });
+    expect(health).toMatchObject({ ok: false, balance_ok: true, relayer_set: true, pending: 1 });
+    expect(health.oldest_pending_s).toBeGreaterThanOrEqual(600);
+    expect(health.error).toMatch(/unmined/);
   });
 });

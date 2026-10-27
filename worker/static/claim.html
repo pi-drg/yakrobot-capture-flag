@@ -434,10 +434,16 @@
         return { k: "0x" + hex(k), nonce: BigInt("0x" + hex(digest)).toString() };
       }
 
-      async function waitForReceipt(tx) {
+      // The relayer may re-send a stuck capture with a higher fee (a new hash) or give it
+      // up, so ask the Worker which transaction is current before each receipt check.
+      async function waitForCapture(player, nonce, tx) {
+        var url = "/r/" + encodeURIComponent(R.slug) + "/capture?player=" + player + "&nonce=" + nonce;
         for (var i = 0; i < 90; i++) {
+          var res = await fetch(url, { cache: "no-store" }).catch(function () { return null; });
+          if (res && res.status === 404) return { tx: tx, receipt: null };
+          if (res && res.ok) tx = (await res.json()).tx;
           var receipt = await ethereum.request({ method: "eth_getTransactionReceipt", params: [tx] });
-          if (receipt) return receipt;
+          if (receipt) return { tx: tx, receipt: receipt };
           await new Promise(function (r) { setTimeout(r, 2000); });
         }
         throw new Error("timeout");
@@ -487,10 +493,13 @@
           if (!res.ok) { say(failure(res.status, body), "err"); return; }
 
           say("Recording your capture on-chain…");
-          var receipt = await waitForReceipt(body.txHash);
-          if (receipt.status !== "0x1") { say("The capture didn't go through on-chain. Try again.", "err"); return; }
+          var landed = await waitForCapture(accounts[0].toLowerCase(), secret.nonce, body.txHash);
+          if (!landed.receipt || landed.receipt.status !== "0x1") {
+            say("The capture didn't go through on-chain. Try again.", "err");
+            return;
+          }
 
-          var saved = { c: typedData, s: sig, k: secret.k, tx: body.txHash, at: Date.now() };
+          var saved = { c: typedData, s: sig, k: secret.k, tx: landed.tx, at: Date.now() };
           save(saved);
           showDrive();
           say("Captured! Taking you to the robot…", "ok");

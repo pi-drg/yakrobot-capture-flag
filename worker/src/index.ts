@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { isHex, zeroAddress } from "viem";
+import { isAddress, isHex, zeroAddress } from "viem";
 import { captureFlagAbi } from "./abi";
 import { AdminError, checkOwner, parseAdminMessage, readOwner } from "./admin";
 import { cooldownRemaining, publicClientFor, readCooldown, rpcUrlOf } from "./chain";
@@ -192,6 +192,20 @@ app.get("/r/:robot/drivers", async (c) => {
     // The page still has the log's ranking; the on-chain leader is a cross-check.
   }
   return c.json({ ...log, leader, contract: config.contract });
+});
+
+/** Where a capture's transaction is now: the relayer may have re-sent it with a higher
+ * fee (new hash) or given it up (404). The robot page polls this, not the first hash. */
+app.get("/r/:robot/capture", async (c) => {
+  const robot = findRobot(c.get("config"), c.req.param("robot"));
+  if (!robot) return c.json({ error: "unknown robot" }, 404);
+  const player = c.req.query("player") ?? "";
+  const nonce = c.req.query("nonce") ?? "";
+  if (!isAddress(player) || !/^[0-9]{1,78}$/.test(nonce)) {
+    return c.json({ error: "player must be an address and nonce a decimal integer" }, 400);
+  }
+  const found = await relayer(c.env).captureTx(player, nonce);
+  return found ? c.json(found) : c.json({ error: "no such capture" }, 404);
 });
 
 app.get("/leaderboard", async (c) => {

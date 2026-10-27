@@ -1,5 +1,5 @@
 import { SELF } from "cloudflare:test";
-import type { Hex } from "viem";
+import { type Hex, toHex } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { describe, expect, it } from "vitest";
 import { robotIdFor } from "../src/config";
@@ -173,6 +173,13 @@ describe("admin switches (design W7)", () => {
     ["the wrong contract", { action: "pause", target: "game", contract: `0x${"11".repeat(20)}` }],
   ])("400s %s", async (_, fields) => {
     expect((await post(text(fields))).code).toBe(400);
+  });
+
+  it("accepts a signature over the UTF-8 hex, as admin.html's personal_sign sends it", async () => {
+    const message = text({ action: "pause", target: "game" });
+    const signature = await privateKeyToAccount(OWNER_KEY as Hex).signMessage({ message: { raw: toHex(message) } });
+    expect((await post(message, undefined, signature)).code).toBe(200);
+    expect((await act("resume", "game")).code).toBe(200);
   });
 
   it("accepts the contract address in any case", async () => {

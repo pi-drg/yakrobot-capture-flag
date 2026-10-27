@@ -59,8 +59,10 @@ export class Relayer extends DurableObject<Env> {
       CREATE TABLE IF NOT EXISTS captures (
         seq INTEGER PRIMARY KEY AUTOINCREMENT,
         slug TEXT NOT NULL, robot_id TEXT NOT NULL, player TEXT NOT NULL,
-        tx TEXT NOT NULL, at INTEGER NOT NULL
+        nonce TEXT NOT NULL, tx TEXT NOT NULL, at INTEGER NOT NULL
       );
+      -- The contract's nonceUsed is per player, across robots.
+      CREATE UNIQUE INDEX IF NOT EXISTS captures_nonce ON captures (player, nonce);
       CREATE INDEX IF NOT EXISTS captures_robot ON captures (robot_id, seq);
       CREATE INDEX IF NOT EXISTS captures_pair ON captures (robot_id, player, seq);
       -- reached: the seq that brought n to its value, for the contract's tie rule.
@@ -119,7 +121,11 @@ export class Relayer extends DurableObject<Env> {
     if (disabled.includes(slug)) return { ok: false, status: 403, error: "robot is disabled" };
 
     // The Worker checked lastCapture on-chain, but a capture we sent may not be mined
-    // yet; our own log is the only record of it.
+    // yet; our own log is the only record of it. Likewise a nonce sent for another robot.
+    const used = this.sql
+      .exec("SELECT 1 FROM captures WHERE player = ? AND nonce = ?", c.player, String(c.nonce))
+      .toArray().length;
+    if (used) return { ok: false, status: 400, error: "this capture was already used" };
     const now = Math.floor(Date.now() / 1000);
     const last = this.sql
       .exec<{ at: number }>(
@@ -164,7 +170,7 @@ export class Relayer extends DurableObject<Env> {
       txHash = await wallet.writeContract({ ...request, nonce });
     }
     this.sql.exec("INSERT OR REPLACE INTO kv (key, value) VALUES ('nonce', ?)", String(nonce + 1));
-    this.record(slug, c.robotId, c.player, txHash, now);
+    this.record(slug, c, txHash, now);
     return { ok: true, txHash };
   }
 
@@ -193,13 +199,15 @@ export class Relayer extends DurableObject<Env> {
     return nonce;
   }
 
-  private record(slug: string, robotId: string, player: string, tx: string, at: number): void {
+  private record(slug: string, c: Capture, tx: string, at: number): void {
+    const { robotId, player } = c;
     const seq = this.sql
       .exec<{ seq: number }>(
-        "INSERT INTO captures (slug, robot_id, player, tx, at) VALUES (?, ?, ?, ?, ?) RETURNING seq",
+        "INSERT INTO captures (slug, robot_id, player, nonce, tx, at) VALUES (?, ?, ?, ?, ?, ?) RETURNING seq",
         slug,
         robotId,
         player,
+        String(c.nonce),
         tx,
         at
       )

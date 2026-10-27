@@ -15,6 +15,8 @@ const app = new Hono<{ Bindings: Env; Variables: { config: Config } }>();
 
 /** design W3 step 2: a signature may not be good for more than 10 minutes. */
 const MAX_DEADLINE_AHEAD = 600n;
+/** ...and must have a minute left, so it can't expire while its transaction is pending. */
+const MIN_DEADLINE_LEFT = 60n;
 
 // Vars only change on deploy, so parse them once per isolate; the key is the env object.
 const configs = new WeakMap<object, Config>();
@@ -135,7 +137,7 @@ app.post("/capture", async (c) => {
 
   // 2. Deadline.
   const now = BigInt(Math.floor(Date.now() / 1000));
-  if (message.deadline <= now) return fail(400, "capture expired, sign again");
+  if (message.deadline < now + MIN_DEADLINE_LEFT) return fail(400, "capture expired, sign again");
   if (message.deadline > now + MAX_DEADLINE_AHEAD) return fail(400, "deadline is too far ahead");
 
   // 3. Signature.

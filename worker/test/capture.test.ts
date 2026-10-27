@@ -30,7 +30,10 @@ const relayer = () => env.RELAYER.get(env.RELAYER.idFromName(RELAYER_NAME));
 const now = () => Math.floor(Date.now() / 1000);
 const relayerNonce = () => client.getTransactionCount({ address: RELAYER_ADDRESS, blockTag: "pending" });
 
+const STATUS_ID = robotIdFor(`127.0.0.1:${STUB_PORTS.status}`, STUB_ROBOT);
+
 interface Options {
+  robotId?: Hex;
   key?: Hex;
   signer?: Hex;
   nonce?: number;
@@ -44,7 +47,7 @@ async function signed(opts: Options = {}) {
   const player = privateKeyToAccount(key);
   const domain = { ...DOMAIN, ...opts.domain };
   const message = {
-    robotId: ROBOT_ID,
+    robotId: opts.robotId ?? ROBOT_ID,
     player: player.address,
     nonce: BigInt(opts.nonce ?? Date.now()),
     deadline: BigInt(opts.deadline ?? now() + 300),
@@ -116,7 +119,9 @@ describe("POST /capture", () => {
     expect(again.code).toBe(429);
     const retry = Number(again.headers.get("Retry-After"));
     expect(retry).toBeGreaterThan(COOLDOWN - 10);
-    expect(retry).toBeLessThanOrEqual(COOLDOWN);
+    // Anvil keeps block timestamps strictly increasing, so many blocks in one second
+    // run chain time ahead of the wall clock the Worker counts from.
+    expect(retry).toBeLessThanOrEqual(COOLDOWN + 30);
   });
 
   it("409s a busy robot without sending a transaction", async () => {
@@ -132,12 +137,31 @@ describe("POST /capture", () => {
     ["the wrong chain", { domain: { chainId: 8453 } }, "wrong EIP-712 domain for this game"],
     ["the wrong contract", { domain: { verifyingContract: RELAYER_ADDRESS } }, "wrong EIP-712 domain for this game"],
     ["an expired deadline", { deadline: now() - 1 }, "capture expired, sign again"],
+    ["a deadline under a minute away", { deadline: now() + 30 }, "capture expired, sign again"],
     ["a deadline too far ahead", { deadline: now() + 3600 }, "deadline is too far ahead"],
   ] as const)("400s %s", async (_, opts: Options, error) => {
     const before = await relayerNonce();
     const res = await post((await signed(opts)).body);
     expect(res).toMatchObject({ code: 400, body: { error } });
     expect(await relayerNonce()).toBe(before);
+  });
+
+  it("400s a nonce already sent for another robot, before it's mined", async () => {
+    await setStub("status", "free");
+    await anvilRpc("evm_setAutomine", [false]);
+    try {
+      const key = generatePrivateKey();
+      const first = await post((await signed({ key, nonce: 7 })).body);
+      expect(first.code).toBe(200);
+      const before = await relayerNonce();
+      const other = await post((await signed({ key, nonce: 7, robotId: STATUS_ID })).body);
+      expect(other).toMatchObject({ code: 400, body: { error: "this capture was already used" } });
+      expect(await relayerNonce()).toBe(before);
+      await anvilRpc("evm_mine");
+      expect((await mined(first.body.txHash)).status).toBe("success");
+    } finally {
+      await anvilRpc("evm_setAutomine", [true]);
+    }
   });
 
   it("403s while the robot is disabled", async () => {

@@ -300,12 +300,12 @@
         return btoa(unescape(encodeURIComponent(text))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
       }
       function driveUrl(saved) {
-        return R.drive + "#c=" + b64url(JSON.stringify(saved.c)) + "&s=" + saved.s + "&tx=" + saved.tx;
+        return R.drive + "#c=" + b64url(JSON.stringify(saved.c)) + "&s=" + saved.s + "&k=" + saved.k + "&tx=" + saved.tx;
       }
       function loadSaved() {
         try {
           var saved = JSON.parse(localStorage.getItem(SAVED_KEY) || "null");
-          if (saved && Date.now() - saved.at < R.validMinutes * 60000) return saved;
+          if (saved && saved.k && Date.now() - saved.at < R.validMinutes * 60000) return saved;
         } catch (e) {}
         return null;
       }
@@ -421,9 +421,17 @@
         }
       }
 
-      function randomNonce() {
-        var w = crypto.getRandomValues(new Uint32Array(2));
-        return (BigInt(w[0]) * 4294967296n + BigInt(w[1])).toString();
+      function hex(bytes) {
+        return Array.from(bytes, function (b) { return b.toString(16).padStart(2, "0"); }).join("");
+      }
+
+      // The ride secret. The capture's signature is public once relayed, so on its own it
+      // proves nothing; the nonce is sha256(k), and k goes only to this visitor's gateway
+      // console, in the URL fragment. 32 random bytes: unguessable, and never repeated.
+      async function rideSecret() {
+        var k = crypto.getRandomValues(new Uint8Array(32));
+        var digest = new Uint8Array(await crypto.subtle.digest("SHA-256", k));
+        return { k: "0x" + hex(k), nonce: BigInt("0x" + hex(digest)).toString() };
       }
 
       async function waitForReceipt(tx) {
@@ -454,6 +462,7 @@
           say("Switching to " + CHAIN.name + (CHAIN.test ? " (test network, free)…" : "…"));
           await switchChain();
 
+          var secret = await rideSecret();
           var typedData = {
             types: TYPES,
             primaryType: "Capture",
@@ -461,7 +470,7 @@
             message: {
               robotId: R.robotId,
               player: accounts[0],
-              nonce: randomNonce(),
+              nonce: secret.nonce,
               deadline: String(Math.floor(Date.now() / 1000) + 300),
             },
           };
@@ -481,7 +490,7 @@
           var receipt = await waitForReceipt(body.txHash);
           if (receipt.status !== "0x1") { say("The capture didn't go through on-chain. Try again.", "err"); return; }
 
-          var saved = { c: typedData, s: sig, tx: body.txHash, at: Date.now() };
+          var saved = { c: typedData, s: sig, k: secret.k, tx: body.txHash, at: Date.now() };
           save(saved);
           showDrive();
           say("Captured! Taking you to the robot…", "ok");

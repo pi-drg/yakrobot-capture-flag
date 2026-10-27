@@ -7,6 +7,7 @@ import { type Config, findRobot, loadConfig, type Robot } from "./config";
 import { CaptureShapeError, DOMAIN_NAME, DOMAIN_VERSION, parseTypedData, recoverPlayer } from "./eip712";
 import { type GatewayState, readGatewayState } from "./gateway";
 import { checkHealth } from "./health";
+import { ipKey } from "./ip";
 import { RELAYER_NAME } from "./relayer";
 import adminPage from "../static/admin.html";
 import claimPage from "../static/claim.html";
@@ -45,7 +46,7 @@ app.use("*", async (c, next) => {
  * always sets CF-Connecting-IP in production; without it (local dev), all share one key. */
 for (const path of ["/capture", "/admin/state"]) {
   app.post(path, async (c, next) => {
-    const ip = c.req.header("cf-connecting-ip") ?? "unknown";
+    const ip = ipKey(c.req.header("cf-connecting-ip") ?? "unknown");
     const { success } = await c.env.IP_LIMIT.limit({ key: `${path}:${ip}` });
     if (!success) {
       c.header("Retry-After", "60");

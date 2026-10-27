@@ -2,6 +2,7 @@ import { env, runInDurableObject, SELF } from "cloudflare:test";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { beforeAll, describe, expect, it } from "vitest";
 import { robotIdFor } from "../src/config";
+import { ipKey } from "../src/ip";
 import { type Relayer, RELAYER_NAME } from "../src/relayer";
 import { randomIp, setGamePaused } from "./game";
 import { STUB_PORTS, STUB_ROBOT } from "./stub-ports";
@@ -32,6 +33,33 @@ describe("per-IP rate limit (design W6)", () => {
       body: "not json",
     });
     expect(other.status).toBe(400);
+  });
+});
+
+describe("ipKey", () => {
+  it.each([
+    ["203.0.113.7", "203.0.113.7"],
+    ["2001:db8:1:2:3:4:5:6", "2001:db8:1:2::/64"],
+    ["2001:DB8:0001:0002::ffff", "2001:db8:1:2::/64"],
+    ["2001:db8::1", "2001:db8:0:0::/64"],
+    ["::1", "0:0:0:0::/64"],
+    ["2001:db8:1:2::", "2001:db8:1:2::/64"],
+  ])("keys %s as %s", (ip, key) => {
+    expect(ipKey(ip)).toBe(key);
+  });
+
+  it("puts two addresses in one /64 in the same bucket", async () => {
+    const prefix = randomIp().replace(/::1$/, "");
+    const codes: number[] = [];
+    for (let i = 1; i <= 11; i++) {
+      const res = await SELF.fetch("https://capture-flag.test/capture", {
+        method: "POST",
+        headers: { "cf-connecting-ip": `${prefix}:${i.toString(16)}:0:0:${i.toString(16)}` },
+        body: "not json",
+      });
+      codes.push(res.status);
+    }
+    expect(codes.at(-1)).toBe(429);
   });
 });
 

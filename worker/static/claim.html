@@ -1,0 +1,522 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Capture a Robot · YakRobot</title>
+    <meta name="description" content="Capture this robot's flag with one free signature, then drive it for five minutes." />
+    <meta name="theme-color" content="#0064ff" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Lora:ital,wght@0,400;0,500;1,400&family=Outfit:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <style>
+      /* Brand tokens from yakrobot.com (Protocolized). */
+      :root {
+        --primary: #0064ff;
+        --primary-pressed: #004fcc;
+        --primary-light-bg: #e6efff;
+        --on-primary: #ffffff;
+        --secondary: #0f6e56;
+        --secondary-deep: #085041;
+        --secondary-light-bg: #e1f5ee;
+        --accent: #d85a30;
+        --accent-bg: #faece7;
+        --canvas: #f9f8f5;
+        --surface-white: #ffffff;
+        --surface-muted: #f3f4f6;
+        --hairline: #e5e7eb;
+        --hairline-soft: #f3f4f6;
+        --ink-dark: #2c2c2a;
+        --ink-secondary: #5f5e5a;
+        --font-serif: "Instrument Serif", Georgia, serif;
+        --font-body: "Lora", Georgia, serif;
+        --font-sans: "Outfit", system-ui, sans-serif;
+        --font-mono: "JetBrains Mono", "Courier New", monospace;
+        --radius-md: 8px;
+        --radius-pill: 9999px;
+        --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+        --maxw: 1120px;
+      }
+      * { box-sizing: border-box; }
+      [hidden] { display: none !important; }
+      body {
+        margin: 0;
+        background: var(--canvas);
+        color: var(--ink-dark);
+        font-family: var(--font-body);
+        font-size: 16px;
+        line-height: 1.55;
+        -webkit-font-smoothing: antialiased;
+      }
+      a { color: inherit; text-decoration: none; }
+      h1, h2, h3 {
+        font-family: var(--font-serif);
+        font-weight: 400;
+        margin: 0;
+        letter-spacing: -0.01em;
+        line-height: 1.05;
+      }
+      a:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; border-radius: 4px; }
+      .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 24px; }
+      .eyebrow {
+        font-family: var(--font-sans);
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--ink-secondary);
+        margin: 0;
+      }
+      .mono { font-family: var(--font-mono); }
+
+      /* nav */
+      header.nav {
+        position: sticky;
+        top: 0;
+        z-index: 50;
+        background: rgba(255, 255, 255, 0.86);
+        backdrop-filter: saturate(140%) blur(8px);
+        border-bottom: 1px solid var(--hairline);
+      }
+      .nav-inner { height: 64px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+      .brand { display: flex; align-items: center; gap: 11px; }
+      .pmark { width: 24px; height: 27px; flex: none; color: var(--primary); }
+      .pmark path { stroke: currentColor; stroke-width: 46; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+      .brand-name { font-family: var(--font-serif); font-size: 21px; line-height: 1; }
+      .nav-link { font-family: var(--font-sans); font-size: 14px; padding: 8px 12px; border-radius: 6px; }
+      .nav-link:hover { color: var(--primary); }
+
+      /* robot hero */
+      .hero { padding: 56px 0 44px; border-bottom: 1px solid var(--hairline-soft); }
+      .back { font-family: var(--font-sans); font-size: 14px; color: var(--ink-secondary); }
+      .back:hover { color: var(--primary); }
+      .hero .eyebrow { margin-top: 22px; }
+      .hero h1 { font-size: clamp(40px, 6.5vw, 68px); letter-spacing: -0.025em; line-height: 0.98; margin-top: 10px; }
+      .state-line { margin-top: 16px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+      .badge {
+        font-family: var(--font-sans);
+        font-size: 12.5px;
+        font-weight: 500;
+        border-radius: var(--radius-pill);
+        padding: 3px 12px;
+        white-space: nowrap;
+      }
+      .badge.free { background: var(--secondary-light-bg); color: var(--secondary-deep); }
+      .badge.busy { background: var(--accent-bg); color: var(--accent); }
+      .badge.off { background: var(--hairline-soft); color: var(--ink-secondary); border: 1px solid var(--hairline); }
+      .muted { font-family: var(--font-sans); font-size: 14px; color: var(--ink-secondary); }
+
+      /* capture panel */
+      .panel {
+        margin-top: 30px;
+        max-width: 560px;
+        background: var(--surface-white);
+        border: 1px solid var(--hairline);
+        border-radius: var(--radius-md);
+        padding: 24px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+      .btn {
+        appearance: none;
+        border: 0;
+        border-radius: var(--radius-md);
+        background: var(--primary);
+        color: var(--on-primary);
+        font-family: var(--font-sans);
+        font-size: 17px;
+        font-weight: 500;
+        padding: 14px 22px;
+        cursor: pointer;
+        text-align: center;
+        display: inline-block;
+      }
+      .btn:hover { background: var(--primary-pressed); }
+      .btn:disabled { background: var(--hairline); color: var(--ink-secondary); cursor: not-allowed; }
+      .btn.ghost { background: var(--surface-white); color: var(--primary); border: 1px solid var(--primary); }
+      .btn.ghost:hover { background: var(--primary-light-bg); }
+      .btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
+      .note { font-family: var(--font-sans); font-size: 13px; color: var(--ink-secondary); margin: 0; }
+      .msg { font-family: var(--font-sans); font-size: 15px; margin: 0; }
+      .msg.err { color: var(--accent); }
+      .msg.ok { color: var(--secondary-deep); }
+      .wallets { display: flex; flex-wrap: wrap; gap: 10px; }
+      .wallets a { font-family: var(--font-sans); font-size: 14px; color: var(--primary); border: 1px solid var(--hairline); border-radius: var(--radius-pill); padding: 6px 14px; }
+      .wallets a:hover { border-color: var(--primary); }
+
+      /* drivers */
+      section.band { padding: 48px 0 56px; }
+      .sec-head { margin-bottom: 20px; }
+      .sec-head h2 { font-size: clamp(28px, 4.4vw, 40px); letter-spacing: -0.02em; margin-top: 8px; }
+      .grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 18px; align-items: start; }
+      .card { background: var(--surface-white); border: 1px solid var(--hairline); border-radius: var(--radius-md); padding: 22px; }
+      .leader { background: var(--primary-light-bg); border-color: transparent; }
+      .leader .big { font-family: var(--font-serif); font-size: 34px; line-height: 1.1; margin: 8px 0 4px; }
+      .stats { display: flex; gap: 22px; margin-top: 14px; font-family: var(--font-sans); font-size: 14px; color: var(--ink-secondary); }
+      .stats b { display: block; font-family: var(--font-serif); font-weight: 400; font-size: 28px; color: var(--ink-dark); }
+      .list { list-style: none; margin: 0; padding: 0; font-family: var(--font-sans); font-size: 15px; }
+      .list li { display: flex; justify-content: space-between; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--hairline-soft); }
+      .list li:last-child { border-bottom: 0; }
+      .list a:hover, .leader a:hover { color: var(--primary); }
+      .ago { color: var(--ink-secondary); white-space: nowrap; }
+
+      footer.site { border-top: 1px solid var(--hairline); padding: 32px 0 48px; }
+      footer .row { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-family: var(--font-sans); font-size: 13px; color: var(--ink-secondary); }
+      footer a { text-decoration: underline; text-underline-offset: 2px; }
+      footer a:hover { color: var(--primary); }
+
+      @media (max-width: 720px) {
+        .wrap { padding: 0 16px; }
+        .hero { padding: 36px 0 32px; }
+        .grid { grid-template-columns: minmax(0, 1fr); }
+        .panel { padding: 18px; }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="nav">
+      <div class="wrap nav-inner">
+        <a class="brand" href="/" aria-label="Capture the Flag — home">
+          <svg class="pmark" viewBox="125 205 670 747" aria-hidden="true">
+            <g transform="rotate(180, 500, 500) scale(-1, 1) translate(-1000, 0)">
+              <path d="M 676.970 676.855 C 579.388 774.437 420.613 774.439 323.030 676.856 C 312.127 665.954 302.514 654.254 294.048 641.995 L 197.681 641.995 L 197.681 724.133 C 197.681 738.504 186.029 750.156 171.657 750.156 C 157.287 750.156 145.634 738.504 145.634 724.133 L 145.634 94.293 C 145.634 79.919 157.287 68.270 171.657 68.270 C 186.029 68.270 197.681 79.919 197.681 94.293 L 197.681 589.949 L 266.574 589.949 C 232.183 500.423 250.957 394.987 323.030 322.915 C 420.611 225.333 579.387 225.334 676.969 322.916 C 774.552 420.499 774.552 579.273 676.970 676.855 Z" />
+              <path d="M 359.832 640.054 C 437.120 717.341 562.879 717.342 640.168 640.053 C 717.455 562.767 717.455 437.006 640.167 359.719" />
+            </g>
+          </svg>
+          <span class="brand-name">YakRobot</span>
+        </a>
+        <a class="nav-link" href="https://yakrobot.com" rel="noopener">yakrobot.com</a>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="wrap">
+          <a class="back" href="/">← All robots</a>
+          <p class="eyebrow" id="place"></p>
+          <h1 id="label"></h1>
+          <div class="state-line">
+            <span class="badge off" id="badge">Checking…</span>
+            <span class="muted" id="state-note"></span>
+          </div>
+
+          <div class="panel" id="panel">
+            <div id="no-wallet" hidden>
+              <p class="msg">Open this page in your wallet's browser to capture.</p>
+              <div class="wallets" id="wallet-links" style="margin-top: 12px"></div>
+            </div>
+            <button class="btn" id="capture" type="button" disabled>Capture &amp; drive</button>
+            <a class="btn ghost" id="drive" hidden>Drive ▸</a>
+            <p class="msg" id="msg" role="status" aria-live="polite"></p>
+            <p class="note" id="chain-note"></p>
+            <p class="note">Capturing is one free signature, no gas. Your wallet address will be shown in the drivers list.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="band">
+        <div class="wrap">
+          <div class="sec-head">
+            <p class="eyebrow">On this robot</p>
+            <h2>Previous drivers</h2>
+          </div>
+          <div class="grid">
+            <div class="card leader" id="leader"><p class="muted">Loading…</p></div>
+            <div class="card"><ul class="list" id="recent"><li class="muted">Loading…</li></ul></div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site">
+      <div class="wrap row">
+        <span>Robots run by friends of the <a href="https://yakrobot.com" rel="noopener">YakRobot</a> project, when they have time.</span>
+        <span id="contract"></span>
+      </div>
+    </footer>
+
+    <!-- Filled in by the Worker: slug, label, place, robotId, chainId, contract, drive, validMinutes. -->
+    <script id="robot" type="application/json">__ROBOT__</script>
+    <script>
+      "use strict";
+      var R = JSON.parse(document.getElementById("robot").textContent);
+      var CHAINS = {
+        84532: { name: "Base Sepolia", test: true, rpc: "https://sepolia.base.org", explorer: "https://sepolia.basescan.org" },
+        8453: { name: "Base", test: false, rpc: "https://mainnet.base.org", explorer: "https://basescan.org" },
+      };
+      var CHAIN = CHAINS[R.chainId];
+      var EXPLORER = CHAIN.explorer;
+      // Must equal the Worker's CAPTURE_TYPES exactly, EIP712Domain included.
+      var TYPES = {
+        EIP712Domain: [
+          { name: "name", type: "string" },
+          { name: "version", type: "string" },
+          { name: "chainId", type: "uint256" },
+          { name: "verifyingContract", type: "address" },
+        ],
+        Capture: [
+          { name: "robotId", type: "bytes32" },
+          { name: "player", type: "address" },
+          { name: "nonce", type: "uint256" },
+          { name: "deadline", type: "uint256" },
+        ],
+      };
+      var SAVED_KEY = "capture-flag:" + R.slug;
+      var state = null;
+      var busy = false;
+
+      function $(id) { return document.getElementById(id); }
+      function el(tag, attrs, children) {
+        var node = document.createElement(tag);
+        for (var k in attrs || {}) {
+          if (k === "class") node.className = attrs[k];
+          else node.setAttribute(k, attrs[k]);
+        }
+        (children || []).forEach(function (c) {
+          node.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+        });
+        return node;
+      }
+      function short(addr) { return addr.slice(0, 6) + "…" + addr.slice(-4); }
+      function clock(unix) { return new Date(unix * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); }
+      function ago(unix) {
+        var s = Math.max(0, Math.floor(Date.now() / 1000 - unix));
+        if (s < 60) return "just now";
+        if (s < 3600) return Math.floor(s / 60) + " min ago";
+        if (s < 86400) return Math.floor(s / 3600) + " h ago";
+        return Math.floor(s / 86400) + " d ago";
+      }
+      function link(href, text) { return el("a", { class: "mono", href: href, target: "_blank", rel: "noopener" }, [text]); }
+      function say(text, kind) {
+        var m = $("msg");
+        m.textContent = text || "";
+        m.className = "msg" + (kind ? " " + kind : "");
+      }
+
+      // ---- saved capture: the Drive ▸ button (design W5, G3a) ----
+
+      function b64url(text) {
+        return btoa(unescape(encodeURIComponent(text))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+      }
+      function driveUrl(saved) {
+        return R.drive + "#c=" + b64url(JSON.stringify(saved.c)) + "&s=" + saved.s + "&tx=" + saved.tx;
+      }
+      function loadSaved() {
+        try {
+          var saved = JSON.parse(localStorage.getItem(SAVED_KEY) || "null");
+          if (saved && Date.now() - saved.at < R.validMinutes * 60000) return saved;
+        } catch (e) {}
+        return null;
+      }
+      function save(saved) {
+        try { localStorage.setItem(SAVED_KEY, JSON.stringify(saved)); } catch (e) {}
+      }
+      function showDrive() {
+        var saved = loadSaved();
+        var drive = $("drive");
+        drive.hidden = !saved;
+        if (saved) drive.href = driveUrl(saved);
+        // With a capture in hand, driving is the main action; capturing again is secondary.
+        drive.className = saved ? "btn" : "btn ghost";
+        $("capture").className = saved ? "btn ghost" : "btn";
+        $("capture").textContent = saved ? "Capture again" : "Capture & drive";
+        if (saved) $("panel").insertBefore(drive, $("capture"));
+      }
+
+      // ---- status ----
+
+      function renderState() {
+        var badge = $("badge"), note = $("state-note");
+        var s = state ? state.state : null;
+        note.textContent = "";
+        if (s === "free") { badge.className = "badge free"; badge.textContent = "Free"; }
+        else if (s === "busy") {
+          badge.className = "badge busy";
+          badge.textContent = "Busy until " + clock(state.until);
+          note.textContent = "Someone is driving. Check back then.";
+        } else if (s === "paused") {
+          badge.className = "badge off"; badge.textContent = "Game paused";
+          note.textContent = "Back soon.";
+        } else if (s === "disabled") {
+          badge.className = "badge off"; badge.textContent = "Disabled";
+          note.textContent = "This robot is resting for now.";
+        } else if (s) {
+          badge.className = "badge off"; badge.textContent = "Offline";
+          note.textContent = "Not running right now. Check back later.";
+        }
+        $("capture").disabled = busy || s !== "free" || !window.ethereum;
+      }
+
+      async function loadStatus() {
+        try {
+          var res = await fetch("/r/" + encodeURIComponent(R.slug) + "/status", { cache: "no-store" });
+          state = res.ok ? await res.json() : { state: "unreachable" };
+        } catch (e) {
+          state = { state: "unreachable" };
+        }
+        renderState();
+      }
+
+      // ---- drivers (design W5a) ----
+
+      async function loadDrivers() {
+        var res;
+        try { res = await fetch("/r/" + encodeURIComponent(R.slug) + "/drivers", { cache: "no-store" }); } catch (e) { return; }
+        if (!res.ok) return;
+        var d = await res.json();
+        $("contract").replaceChildren("Contract ", link(EXPLORER + "/address/" + d.contract, short(d.contract)));
+
+        var leader = $("leader");
+        var stats = el("div", { class: "stats" }, [
+          el("span", {}, [el("b", {}, [String(d.rides)]), "rides"]),
+          el("span", {}, [el("b", {}, [String(d.drivers)]), "drivers"]),
+        ]);
+        if (d.leader) {
+          leader.replaceChildren(
+            el("p", { class: "eyebrow" }, ["Most rides"]),
+            el("p", { class: "big" }, [link(EXPLORER + "/address/" + d.leader.player, short(d.leader.player))]),
+            el("p", { class: "muted" }, [d.leader.rides + (d.leader.rides === 1 ? " ride, " : " rides, "), link(EXPLORER + "/address/" + d.contract, "on-chain")]),
+            stats
+          );
+        } else {
+          leader.replaceChildren(el("p", { class: "eyebrow" }, ["Most rides"]), el("p", { class: "big" }, ["Nobody yet"]), stats);
+        }
+
+        var recent = $("recent");
+        if (!d.recent.length) {
+          recent.replaceChildren(el("li", { class: "muted" }, ["No rides yet. Be the first."]));
+          return;
+        }
+        recent.replaceChildren.apply(
+          recent,
+          d.recent.map(function (r) {
+            return el("li", {}, [
+              link(EXPLORER + "/address/" + r.player, short(r.player)),
+              el("a", { class: "ago", href: EXPLORER + "/tx/" + r.tx, target: "_blank", rel: "noopener" }, ["drove " + ago(r.at)]),
+            ]);
+          })
+        );
+      }
+
+      // ---- capture ----
+
+      async function switchChain() {
+        var hex = "0x" + R.chainId.toString(16);
+        if ((await ethereum.request({ method: "eth_chainId" })) === hex) return;
+        try {
+          await ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: hex }] });
+        } catch (e) {
+          if (e.code !== 4902) throw e;
+          await ethereum.request({
+            method: "wallet_addEthereumChain",
+            params: [{
+              chainId: hex,
+              chainName: CHAIN.name,
+              nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+              rpcUrls: [CHAIN.rpc],
+              blockExplorerUrls: [CHAIN.explorer],
+            }],
+          });
+        }
+      }
+
+      function randomNonce() {
+        var w = crypto.getRandomValues(new Uint32Array(2));
+        return (BigInt(w[0]) * 4294967296n + BigInt(w[1])).toString();
+      }
+
+      async function waitForReceipt(tx) {
+        for (var i = 0; i < 90; i++) {
+          var receipt = await ethereum.request({ method: "eth_getTransactionReceipt", params: [tx] });
+          if (receipt) return receipt;
+          await new Promise(function (r) { setTimeout(r, 2000); });
+        }
+        throw new Error("timeout");
+      }
+
+      function failure(status, body) {
+        if (status === 429) {
+          var mins = Math.ceil((body.retry_after || 0) / 60);
+          return "You captured this robot recently. Try again in " + mins + " min.";
+        }
+        if (status === 409) return "The robot just got busy. Your capture was not used, so try again later.";
+        return body.error ? body.error.charAt(0).toUpperCase() + body.error.slice(1) + "." : "Something went wrong.";
+      }
+
+      async function capture() {
+        busy = true;
+        renderState();
+        try {
+          say("Connecting to your wallet…");
+          var accounts = await ethereum.request({ method: "eth_requestAccounts" });
+          if (!accounts || !accounts.length) throw { code: 4001 };
+          say("Switching to " + CHAIN.name + (CHAIN.test ? " (test network, free)…" : "…"));
+          await switchChain();
+
+          var typedData = {
+            types: TYPES,
+            primaryType: "Capture",
+            domain: { name: "yakrobot-capture-flag", version: "1", chainId: R.chainId, verifyingContract: R.contract },
+            message: {
+              robotId: R.robotId,
+              player: accounts[0],
+              nonce: randomNonce(),
+              deadline: String(Math.floor(Date.now() / 1000) + 300),
+            },
+          };
+          say("Sign the capture in your wallet. It's free.");
+          var sig = await ethereum.request({ method: "eth_signTypedData_v4", params: [accounts[0], JSON.stringify(typedData)] });
+
+          say("Capturing…");
+          var res = await fetch("/capture", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ typedData: typedData, sig: sig }),
+          });
+          var body = await res.json().catch(function () { return {}; });
+          if (!res.ok) { say(failure(res.status, body), "err"); return; }
+
+          say("Recording your capture on-chain…");
+          var receipt = await waitForReceipt(body.txHash);
+          if (receipt.status !== "0x1") { say("The capture didn't go through on-chain. Try again.", "err"); return; }
+
+          var saved = { c: typedData, s: sig, tx: body.txHash, at: Date.now() };
+          save(saved);
+          showDrive();
+          say("Captured! Taking you to the robot…", "ok");
+          location.href = driveUrl(saved);
+        } catch (e) {
+          if (e && e.code === 4001) say("Cancelled in your wallet.", "err");
+          else if (e && e.message === "timeout") say("Still waiting for the chain. Your capture may still land; reload in a minute.", "err");
+          else say("Something went wrong" + (e && e.message ? ": " + e.message : "."), "err");
+        } finally {
+          busy = false;
+          renderState();
+          loadDrivers();
+        }
+      }
+
+      // ---- start ----
+
+      document.title = R.label + " · Capture the Flag";
+      $("label").textContent = R.label;
+      $("place").textContent = R.place;
+      $("chain-note").textContent = CHAIN.name + (CHAIN.test ? " test network. " : ". ") + "EOA wallets only; smart-contract wallets can't sign captures yet.";
+      if (!window.ethereum) {
+        var here = location.host + location.pathname;
+        $("no-wallet").hidden = false;
+        $("wallet-links").replaceChildren(
+          el("a", { href: "https://metamask.app.link/dapp/" + here }, ["MetaMask"]),
+          el("a", { href: "https://go.cb-w.com/dapp?cb_url=" + encodeURIComponent(location.href) }, ["Coinbase Wallet"])
+        );
+      }
+      $("capture").addEventListener("click", capture);
+      showDrive();
+      loadStatus();
+      loadDrivers();
+      setInterval(function () { if (!busy) loadStatus(); }, 15000);
+      setInterval(loadDrivers, 30000);
+    </script>
+  </body>
+</html>

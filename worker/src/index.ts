@@ -6,12 +6,16 @@ import { type Config, findRobot, loadConfig, type Robot } from "./config";
 import { CaptureShapeError, DOMAIN_NAME, DOMAIN_VERSION, parseTypedData, recoverPlayer } from "./eip712";
 import { type GatewayState, readGatewayState } from "./gateway";
 import { RELAYER_NAME } from "./relayer";
+import claimPage from "../static/claim.html";
 import indexPage from "../static/index.html";
 
 export { Relayer } from "./relayer";
 
-// Routes still to come: /r/:robot (page), /admin (W2a), /health (W6).
+// Routes still to come: /admin (W2a), /health (W6).
 const app = new Hono<{ Bindings: Env; Variables: { config: Config } }>();
+
+/** design G3: how long after a capture its ride can still start, the gateway's default. */
+const VALID_MINUTES = 30;
 
 /** design W3 step 2: a signature may not be good for more than 10 minutes. */
 const MAX_DEADLINE_AHEAD = 600n;
@@ -45,6 +49,25 @@ async function robotState(robot: Robot, switches: { paused: boolean; disabled: s
 }
 
 app.get("/", (c) => c.html(indexPage));
+
+/** The robot page, with its robot's config inlined so it needs no extra fetch. */
+app.get("/r/:robot", (c) => {
+  const config = c.get("config");
+  const robot = findRobot(config, c.req.param("robot"));
+  if (!robot) return c.text("unknown robot", 404);
+  const data = JSON.stringify({
+    slug: robot.slug,
+    label: robot.label,
+    place: robot.place,
+    robotId: robot.robotId,
+    chainId: config.chainId,
+    contract: config.contract,
+    drive: `${robot.gateway}/${robot.name}/ui`,
+    validMinutes: VALID_MINUTES,
+  }).replace(/</g, "\\u003c");
+  // A function replacement, so `$` in a label isn't read as a pattern.
+  return c.html(claimPage.replace("__ROBOT__", () => data));
+});
 
 app.get("/health", (c) => c.json({ ok: true, chain: c.env.CHAIN }));
 

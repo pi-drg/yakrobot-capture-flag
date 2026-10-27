@@ -186,6 +186,15 @@ export class Relayer extends DurableObject<Env> {
     return { ok: true, txHash };
   }
 
+  /** The relayer's public address, for /health; null if the key is missing or malformed. */
+  address(): string | null {
+    try {
+      return this.relayerAccount().address;
+    } catch {
+      return null;
+    }
+  }
+
   private relayerAccount(): PrivateKeyAccount {
     if (!this.account) {
       const key = this.env.RELAYER_PRIVATE_KEY ?? "";

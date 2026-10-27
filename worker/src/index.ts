@@ -6,6 +6,7 @@ import { cooldownRemaining, publicClientFor, readCooldown, rpcUrlOf } from "./ch
 import { type Config, findRobot, loadConfig, type Robot } from "./config";
 import { CaptureShapeError, DOMAIN_NAME, DOMAIN_VERSION, parseTypedData, recoverPlayer } from "./eip712";
 import { type GatewayState, readGatewayState } from "./gateway";
+import { checkHealth } from "./health";
 import { RELAYER_NAME } from "./relayer";
 import adminPage from "../static/admin.html";
 import claimPage from "../static/claim.html";
@@ -13,7 +14,6 @@ import indexPage from "../static/index.html";
 
 export { Relayer } from "./relayer";
 
-// Routes still to come: /health (W6).
 const app = new Hono<{ Bindings: Env; Variables: { config: Config } }>();
 
 /** design G3: how long after a capture its ride can still start, the gateway's default. */
@@ -27,13 +27,17 @@ const MIN_DEADLINE_LEFT = 60n;
 // Vars only change on deploy, so parse them once per isolate; the key is the env object.
 const configs = new WeakMap<object, Config>();
 
-app.use("*", async (c, next) => {
-  let config = configs.get(c.env);
+function configOf(env: Env): Config {
+  let config = configs.get(env);
   if (!config) {
-    config = loadConfig(c.env as unknown as Record<string, string | undefined>);
-    configs.set(c.env, config);
+    config = loadConfig(env as unknown as Record<string, string | undefined>);
+    configs.set(env, config);
   }
-  c.set("config", config);
+  return config;
+}
+
+app.use("*", async (c, next) => {
+  c.set("config", configOf(c.env));
   await next();
 });
 
@@ -131,7 +135,11 @@ app.post("/admin/state", async (c) => {
   return c.json(await adminState(c.env, config));
 });
 
-app.get("/health", (c) => c.json({ ok: true, chain: c.env.CHAIN }));
+/** design W6: 503 when the relayer can't pay gas or the contract no longer accepts it. */
+app.get("/health", async (c) => {
+  const health = await checkHealth(c.env, c.get("config"), relayer(c.env));
+  return c.json(health, health.ok ? 200 : 503);
+});
 
 /** Every robot's state for the index page, gateways asked in parallel (design W5b). */
 app.get("/robots", async (c) => {
@@ -269,4 +277,10 @@ app.post("/capture", async (c) => {
   });
 });
 
-export default app;
+/** design W6: every 15 minutes, flag an unhealthy relayer in the Worker's logs. */
+async function scheduled(_controller: ScheduledController, env: Env): Promise<void> {
+  const health = await checkHealth(env, configOf(env), relayer(env), { fresh: true });
+  if (!health.ok) console.error("capture-flag unhealthy", JSON.stringify(health));
+}
+
+export default { fetch: app.fetch, scheduled } satisfies ExportedHandler<Env>;

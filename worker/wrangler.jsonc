@@ -3,8 +3,6 @@
 //
 // workers_dev is on: unlike pay.yakrobot.com, the claim page is meant to be public. The
 // custom domain (capture-flag.yakrobot.com) is added by the user at deploy time (W3).
-//
-// Still to come: the 15-minute balance cron (W6).
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "yakrobot-capture-flag",
@@ -33,6 +31,8 @@
 		"RELAYER_MIN_WEI": "1000000000000000",
 		"DRIVERS_SHOWN": "50"
 	},
+	// design W6: check the relayer's balance and the contract's relayer every 15 minutes.
+	"triggers": { "crons": ["*/15 * * * *"] },
 	// One named instance holds the relayer key, the nonce, the drivers log and the game
 	// switches (design W4, W5a, W7).
 	"durable_objects": {

@@ -2,8 +2,7 @@
 
 Capture the flag for yakrobot robots: a visitor signs a free EIP-712 `Capture`, this
 repo's Worker relays it to the `CaptureFlag` contract on Base, and the robot's gateway
-grants a 5-minute ride. Design: [2026-10-06-capture-flag.md](../plans/2026-10-06-capture-flag.md);
-steps: [2026-10-06-capture-flag-execution.md](../plans/2026-10-06-capture-flag-execution.md).
+grants a 5-minute ride.
 
 Architecture (contract, Worker, gateway, a ride end to end, controls, limits):
 [docs/architecture.md](docs/architecture.md). Keep it current when any of those change.
@@ -15,7 +14,7 @@ Architecture (contract, Worker, gateway, a ride end to end, controls, limits):
   commits and local file edits are fine; nothing leaves this machine without
   explicit approval.
 - **Never run `wrangler login`, `wrangler deploy` or `wrangler secret put`.** Those are
-  the user's actions (execution plan W3). Prepare configuration, then stop.
+  the user's actions. Prepare configuration, then stop.
 - **Secrets never enter the conversation, a commit, or a log line.** `RELAYER_PRIVATE_KEY`
   lives only in gitignored `worker/.dev.vars`, or as a Worker secret the user types
   themselves. The contract owner key lives in a Foundry encrypted keystore

@@ -13,7 +13,7 @@ How the pieces fit: [docs/architecture.md](docs/architecture.md).
 
 Robots run on friends' own gateways (`yakrobot-gateway` in capture-flag mode). See its
 README, "Running a robot in the capture-flag game", for the friend's side. See
-[AGENTS.md](AGENTS.md) for the plan links and commands.
+[AGENTS.md](AGENTS.md) for the commands.
 
 ## Owner's runbook
 

@@ -161,7 +161,5 @@ Rides already started always run to the end of their lease: the gateway owns rid
 
 ## Further reading
 
-- Design: [`plans/2026-10-06-capture-flag.md`](../../plans/2026-10-06-capture-flag.md)
-  and the execution plan beside it (in the `pi-drg` planning repo).
 - Owner's runbook: [README](../README.md#owners-runbook).
 - Friend's runbook: `yakrobot-gateway` README, "Running a robot in the capture-flag game".

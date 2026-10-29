@@ -1,7 +1,7 @@
 # contracts
 
-`CaptureFlag`: records gas-sponsored captures of yakrobot robots (design F1–F7 in
-`../../plans/2026-10-06-capture-flag.md`). No tokens, no ETH.
+`CaptureFlag`: records gas-sponsored captures of yakrobot robots. No tokens, no ETH.
+See [../docs/architecture.md](../docs/architecture.md).
 
 Dependencies are git submodules pinned in `foundry.lock`: forge-std v1.17.0 and
 OpenZeppelin Contracts v5.7.0.
@@ -13,7 +13,7 @@ forge test
 forge snapshot
 ```
 
-## Deploy to Base Sepolia (execution plan F2)
+## Deploy to Base Sepolia
 
 Run these yourself, in your own terminal. Each `cast wallet new` asks for a keystore
 password and prints only the address; the keys stay encrypted in `~/.foundry/keystores`.

@@ -2,7 +2,7 @@
 // page listing every robot, plus each robot's claim page.
 //
 // workers_dev is on: unlike pay.yakrobot.com, the claim page is meant to be public. The
-// custom domain (capture-flag.yakrobot.com) is added by the user at deploy time (W3).
+// custom domain capture-flag.yakrobot.com is in "routes", so each deploy keeps it.
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "yakrobot-capture-flag",
@@ -10,6 +10,9 @@
 	"compatibility_date": "2026-09-01",
 	"workers_dev": true,
 	"preview_urls": false,
+	// Cloudflare creates the DNS record and certificate. Needs a deploy token with access to
+	// the yakrobot.com zone.
+	"routes": [{ "pattern": "capture-flag.yakrobot.com", "custom_domain": true }],
 	// Pages are single-file HTML imported as strings (design W5).
 	"rules": [{ "type": "Text", "globs": ["**/*.html"], "fallthrough": false }],
 	// Public constants only (design W1). RELAYER_PRIVATE_KEY and RPC_URL are `wrangler secret put` in

@@ -51,14 +51,14 @@ describe("loadConfig", () => {
     const config = loadConfig(env({ ROBOTS: "{}" }));
     expect(config.chainId).toBe(84532);
     expect(config.contract).toBe("0xf3f2e69a1b00577d5d6ca1911a3a80132cd08737");
-    expect(config.robots).toEqual([]);
+    expect(config.seedRobots).toEqual([]);
     expect(config.relayerMinWei).toBe(1_000_000_000_000_000n);
     expect(config.driversShown).toBe(50);
     expect(config.sendsPerHour).toBe(60);
   });
 
   it("derives each robotId from the gateway host and robot name", () => {
-    const [india, berlin] = loadConfig(env()).robots;
+    const [india, berlin] = loadConfig(env()).seedRobots;
     expect(india).toEqual({
       slug: "india",
       name: "picar_adeept",
@@ -73,8 +73,7 @@ describe("loadConfig", () => {
   });
 
   it("keeps friends with the same robot name apart by their gateway host", () => {
-    const { robots } = loadConfig(env());
-    const [, berlin, seattle] = robots;
+    const [, berlin, seattle] = loadConfig(env()).seedRobots;
     expect(berlin.name).toBe(seattle.name);
     expect(berlin.robotId).not.toBe(seattle.robotId);
   });
@@ -82,7 +81,7 @@ describe("loadConfig", () => {
   it("lowercases the host, as the URL standard does", () => {
     const [robot] = loadConfig(
       robots({ india: { ...INDIA, gateway: "https://Gateway.Yakrobot.Example" } })
-    ).robots;
+    ).seedRobots;
     expect(robot.robotId).toBe(vectors.vectors[0].message.robotId);
   });
 
@@ -94,13 +93,13 @@ describe("loadConfig", () => {
 
   it("finds a configured robot by slug and not an unknown one", () => {
     const config = loadConfig(env());
-    expect(findRobot(config, "berlin")?.place).toBe("Berlin");
-    expect(findRobot(config, "picar_freenove")).toBeUndefined();
+    expect(findRobot(config.seedRobots, "berlin")?.place).toBe("Berlin");
+    expect(findRobot(config.seedRobots, "picar_freenove")).toBeUndefined();
   });
 
   it("allows http only to localhost for local dev", () => {
     const local = { berlin: { ...BERLIN, gateway: "http://127.0.0.1:8000" } };
-    expect(loadConfig(robots(local)).robots[0].gateway).toBe("http://127.0.0.1:8000");
+    expect(loadConfig(robots(local)).seedRobots[0].gateway).toBe("http://127.0.0.1:8000");
   });
 
   it.each([

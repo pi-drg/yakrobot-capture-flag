@@ -154,6 +154,20 @@
       .badge.on { background: var(--secondary-light-bg); color: var(--secondary-deep); }
       .badge.off { background: var(--accent-bg); color: var(--accent); }
       section.band { padding: 8px 0 56px; }
+      .addform { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; }
+      .addform label { display: flex; flex-direction: column; gap: 4px; font: 500 13px var(--font-sans); color: var(--ink-secondary); }
+      .addform input {
+        font: 15px var(--font-sans);
+        color: var(--ink-dark);
+        padding: 8px 10px;
+        border: 1px solid var(--hairline);
+        border-radius: var(--radius-md);
+        background: var(--surface-white);
+      }
+      .addform input:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+      .addform .wide { grid-column: 1 / -1; }
+      .addform .hint { font: 13px/1.5 var(--font-sans); color: var(--ink-secondary); margin: 0; }
+      .robot-meta { font: 12.5px var(--font-mono); color: var(--ink-secondary); margin: 4px 0 0; word-break: break-all; }
       .card {
         background: var(--surface-white);
         border: 1px solid var(--hairline);
@@ -199,6 +213,7 @@
         .foot-grid { grid-template-columns: 1fr; gap: 24px; }
         .hero { padding: 32px 0 20px; }
         .card { padding: 16px; }
+        .addform { grid-template-columns: minmax(0, 1fr); }
       }
     </style>
   </head>
@@ -247,6 +262,20 @@
           <div class="card" id="relayer"><p class="muted">Loading…</p></div>
           <p class="eyebrow" style="margin-top: 36px">Robots</p>
           <div class="card" id="robots"><p class="muted">Loading…</p></div>
+          <p class="eyebrow" style="margin-top: 36px">Add a robot</p>
+          <form class="card addform" id="addform" autocomplete="off">
+            <label>Slug, in the page address <input name="slug" required pattern="[a-z0-9][a-z0-9\-]{0,31}" placeholder="india" /></label>
+            <label>Gateway robot name <input name="robot" required value="picar_freenove" /></label>
+            <label class="wide">Gateway address (the friend's fixed hostname) <input name="gateway" type="url" required placeholder="https://example.ngrok-free.dev" /></label>
+            <label>Label <input name="label" required maxlength="80" placeholder="Freenove PiCar" /></label>
+            <label>Place <input name="place" required maxlength="80" placeholder="India" /></label>
+            <p class="hint wide">
+              The robot's page is <span class="mono">/r/&lt;slug&gt;</span>: give the friend that full address for
+              <span class="mono">TELEOP_CAPTURE_FLAG_CLAIM_URL</span>. The slug can't change later; removing a robot
+              keeps its rides, and adding the same gateway and robot name back carries on from them.
+            </p>
+            <div class="wide"><button class="btn" type="submit" id="add">Add robot</button></div>
+          </form>
         </div>
       </section>
     </main>
@@ -342,8 +371,9 @@
         renderRelayer(explorer);
 
         var robots = $("robots");
+        $("add").disabled = busy;
         if (!S.robots.length) {
-          robots.replaceChildren(el("p", { class: "muted" }, ["No robots in ROBOTS yet."]));
+          robots.replaceChildren(el("p", { class: "muted" }, ["No robots yet. Add one below."]));
           return;
         }
         robots.replaceChildren.apply(
@@ -356,12 +386,19 @@
                   r.place + " · " + r.rides + (r.rides === 1 ? " ride · " : " rides · ") +
                     r.drivers + (r.drivers === 1 ? " driver" : " drivers"),
                 ]),
+                el("p", { class: "robot-meta" }, [r.gateway + " · " + r.name]),
+                el("p", { class: "robot-meta" }, ["Claim URL " + location.origin + "/r/" + r.slug]),
               ]),
               el("div", { class: "side" }, [
                 el("span", { class: r.disabled ? "badge off" : "badge on" }, [r.disabled ? "Disabled" : "Enabled"]),
                 r.disabled
                   ? button("Enable", false, function () { send("enable", r.slug); })
                   : button("Disable", true, function () { send("disable", r.slug); }),
+                button("Remove", true, function () {
+                  if (confirm("Remove " + r.label + " (" + r.slug + ") from the game? Its rides stay in the log.")) {
+                    robotAction({ action: "remove", slug: r.slug }, "Removed " + r.slug + ".");
+                  }
+                }),
               ]),
             ]);
           })
@@ -402,6 +439,55 @@
       function renderWho() {
         $("who").textContent = S && S.admin ? "Signed in as " + S.admin.email : "";
       }
+
+      async function robotAction(body, done) {
+        busy = true;
+        render();
+        try {
+          say("Working…");
+          var res = await fetch("/admin/robots", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(body),
+          });
+          if (res.redirected) { say(EXPIRED, "err"); return false; }
+          var reply = await res.json().catch(function () { return {}; });
+          if (!res.ok) { say((reply.error || "Something went wrong") + ".", "err"); return false; }
+          S = reply;
+          say(done, "ok");
+          return true;
+        } catch (e) {
+          say(e instanceof TypeError ? EXPIRED : "Something went wrong" + (e && e.message ? ": " + e.message : "."), "err");
+          return false;
+        } finally {
+          busy = false;
+          render();
+        }
+      }
+
+      // After adding, ask the gateway once, so a typo in the address shows straight away.
+      async function checkRobot(slug) {
+        try {
+          var res = await fetch("/r/" + encodeURIComponent(slug) + "/status", { cache: "no-store" });
+          var st = (await res.json()).state;
+          var url = location.origin + "/r/" + slug;
+          if (st === "free" || st === "busy" || st === "paused") say("Added. The gateway answers. Claim URL for the friend: " + url, "ok");
+          else say("Added, but the gateway is " + st + " right now. Check the address and robot name. Claim URL: " + url, "err");
+        } catch (e) {}
+      }
+
+      $("addform").addEventListener("submit", async function (e) {
+        e.preventDefault();
+        var f = e.target.elements;
+        var body = { action: "add" };
+        ["slug", "gateway", "robot", "label", "place"].forEach(function (k) { body[k] = f[k].value.trim(); });
+        // The Worker wants a bare origin; forgive a trailing slash.
+        body.gateway = body.gateway.replace(/\/+$/, "");
+        if (await robotAction(body, "Added " + body.slug + ".")) {
+          e.target.reset();
+          checkRobot(body.slug);
+        }
+      });
 
       async function load() {
         var res = await fetch("/admin/state", { cache: "no-store" });

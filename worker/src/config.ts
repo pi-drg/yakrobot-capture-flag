@@ -5,7 +5,7 @@ import { keccak256, toBytes } from "viem";
  * derived here from its gateway host and robot name, so a friend running a
  * robot only hands over a host and a name, and no hand-typed id can be wrong.
  *
- * `ROBOTS` is keyed by a slug of our own (`berlin`), not by the gateway's robot name:
+ * Robots are keyed by a slug of our own (`berlin`), not by the gateway's robot name:
  * friends running the same kit all have a `picar_freenove`.
  */
 
@@ -27,8 +27,9 @@ export interface Robot {
 export interface Config {
   chainId: 84532 | 8453;
   contract: `0x${string}`;
-  /** In `ROBOTS` order, which is the order the index page lists them in. */
-  robots: Robot[];
+  /** `ROBOTS`, in order: only the seed for the relayer's robot list, read once on its
+   * first start. After that the list lives in the relayer and /admin edits it. */
+  seedRobots: Robot[];
   relayerMinWei: bigint;
   driversShown: number;
   sendsPerHour: number;
@@ -114,39 +115,46 @@ function parseRobots(value: string): Robot[] {
   const robots: Robot[] = [];
   const ids = new Map<string, string>();
   for (const [slug, entry] of Object.entries(raw)) {
-    if (!SLUG_RE.test(slug)) {
-      throw new ConfigError(`ROBOTS key ${JSON.stringify(slug)} must match ${SLUG_RE}`);
-    }
-    // The admin message's game-wide target.
-    if (slug === "game") throw new ConfigError('ROBOTS key "game" is reserved');
-    const at = `ROBOTS.${slug}`;
-    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
-      throw new ConfigError(`${at} must be an object`);
-    }
-    const extra = Object.keys(entry).filter((k) => !ROBOT_FIELDS.has(k));
-    if (extra.length) {
-      // Catches a leftover hand-typed robot_id, which is now derived.
-      throw new ConfigError(`${at} has unknown fields: ${extra.join(", ")}`);
-    }
-    const e = entry as Record<string, unknown>;
-    const url = validateGateway(at, e.gateway);
-    if (typeof e.robot !== "string" || !ROBOT_NAME_RE.test(e.robot)) {
-      throw new ConfigError(`${at}.robot must match ${ROBOT_NAME_RE}`);
-    }
-    const robotId = robotIdFor(url.host, e.robot);
-    const clash = ids.get(robotId);
-    if (clash) throw new ConfigError(`${at} is the same gateway robot as ROBOTS.${clash}`);
-    ids.set(robotId, slug);
-    robots.push({
-      slug,
-      name: e.robot,
-      gateway: url.origin,
-      robotId,
-      label: validateText(`${at}.label`, e.label),
-      place: validateText(`${at}.place`, e.place),
-    });
+    const robot = parseRobot(slug, entry, `ROBOTS.${slug}`);
+    const clash = ids.get(robot.robotId);
+    if (clash) throw new ConfigError(`ROBOTS.${slug} is the same gateway robot as ROBOTS.${clash}`);
+    ids.set(robot.robotId, slug);
+    robots.push(robot);
   }
   return robots;
+}
+
+/**
+ * One robot, `{gateway, robot, label, place}` under `slug`: the `ROBOTS` seed's entries
+ * and the admin page's "Add a robot" both come through here. `at` names it in errors.
+ */
+export function parseRobot(slug: unknown, entry: unknown, at = "robot"): Robot {
+  if (typeof slug !== "string" || !SLUG_RE.test(slug)) {
+    throw new ConfigError(`${at}: the slug ${JSON.stringify(slug)} must match ${SLUG_RE}`);
+  }
+  // The admin switches' game-wide target.
+  if (slug === "game") throw new ConfigError(`${at}: the slug "game" is reserved`);
+  if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+    throw new ConfigError(`${at} must be an object`);
+  }
+  const extra = Object.keys(entry).filter((k) => !ROBOT_FIELDS.has(k));
+  if (extra.length) {
+    // Catches a leftover hand-typed robot_id, which is now derived.
+    throw new ConfigError(`${at} has unknown fields: ${extra.join(", ")}`);
+  }
+  const e = entry as Record<string, unknown>;
+  const url = validateGateway(at, e.gateway);
+  if (typeof e.robot !== "string" || !ROBOT_NAME_RE.test(e.robot)) {
+    throw new ConfigError(`${at}.robot must match ${ROBOT_NAME_RE}`);
+  }
+  return {
+    slug,
+    name: e.robot,
+    gateway: url.origin,
+    robotId: robotIdFor(url.host, e.robot),
+    label: validateText(`${at}.label`, e.label),
+    place: validateText(`${at}.place`, e.place),
+  };
 }
 
 /** Validate every var and assemble the `Config`, or throw `ConfigError` naming the
@@ -165,7 +173,7 @@ export function loadConfig(env: RawEnv): Config {
   return {
     chainId: chainId as 84532 | 8453,
     contract: contract.toLowerCase() as `0x${string}`,
-    robots: parseRobots(requireVar(env, "ROBOTS")),
+    seedRobots: parseRobots(requireVar(env, "ROBOTS")),
     relayerMinWei: BigInt(relayerMinWei),
     driversShown: validatePositiveInt("DRIVERS_SHOWN", requireVar(env, "DRIVERS_SHOWN")),
     sendsPerHour: validatePositiveInt("SENDS_PER_HOUR", requireVar(env, "SENDS_PER_HOUR")),
@@ -173,7 +181,7 @@ export function loadConfig(env: RawEnv): Config {
   };
 }
 
-/** The configured robot by slug, or `undefined` for an unknown one (the route's 404). */
-export function findRobot(config: Config, slug: string): Robot | undefined {
-  return config.robots.find((r) => r.slug === slug);
+/** The robot with this slug, or `undefined` for an unknown one (the route's 404). */
+export function findRobot(robots: Robot[], slug: string): Robot | undefined {
+  return robots.find((r) => r.slug === slug);
 }

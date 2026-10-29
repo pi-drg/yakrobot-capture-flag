@@ -94,7 +94,7 @@ One Cloudflare Worker (Hono + viem) with one Durable Object.
   network leaderboard.
 - `/r/:robot`: one robot. Status, previous drivers and the most-rides leader, the
   Capture button, and a saved Drive button for 30 minutes.
-- `/admin`: the switches and the relayer top-up, behind Cloudflare Access.
+- `/admin`: the switches, the robot list and the relayer top-up, behind Cloudflare Access.
 
 **API:**
 
@@ -105,6 +105,7 @@ One Cloudflare Worker (Hono + viem) with one Durable Object.
 | `GET /r/:robot/drivers`, `GET /leaderboard` | From the relayer's log, plus the on-chain leader and a `names` map. |
 | `GET /r/:robot/capture?player&nonce` | A capture's current transaction (it may have been re-sent), or 404 if it failed. |
 | `GET/POST /admin/state` | Access only. The switches and the relayer's balance; POST takes `{action, target}`. |
+| `POST /admin/robots` | Access only. Add `{slug, gateway, robot, label, place}` or remove `{slug}` a robot. |
 | `POST /admin/topup` | Access only. `TOPUP_CLAIMS` CDP faucet claims for the relayer, once a minute (Base Sepolia only). |
 | `GET /health` | Relayer balance, `relayer() == ours`, unmined sends. 503 when not ok. |
 
@@ -118,13 +119,15 @@ the relayer key is read. It:
   marks the capture `reverted`;
 - holds the switches: `paused` (the whole game, **on** after a fresh deploy) and
   `disabled:<robot>`;
+- holds the robot list (`robots`, in the order added), which `/admin` edits. `ROBOTS`
+  seeds it on the first start and is never read again;
 - caches player names: a Base primary name (`alice.base.eth`), else a mainnet ENS name,
   both looked up through the ENS Universal Resolver on Ethereum mainnet (ENSIP-19), which
   checks the name points back to the address. Re-checked daily; looked up after the
   response, so pages never wait for them.
 
 **Configuration** (`wrangler.jsonc`): `CHAIN`, `CONTRACT`, `ROBOTS` (slug →
-`{gateway, robot, label, place}`), `RELAYER_MIN_WEI`, `DRIVERS_SHOWN`, `SENDS_PER_HOUR`,
+`{gateway, robot, label, place}`, the robot list's first-start seed only), `RELAYER_MIN_WEI`, `DRIVERS_SHOWN`, `SENDS_PER_HOUR`,
 `TOPUP_CLAIMS`. Secrets: `RELAYER_PRIVATE_KEY`, `RPC_URL`, and optionally `ENS_RPC_URL` (an
 Ethereum mainnet RPC; player names are off without it) and `CDP_API_KEY_ID` +
 `CDP_API_KEY_SECRET` (a CDP Secret API Key; the admin top-up is off without it). Access:
@@ -160,6 +163,7 @@ driver at a time).
 |---|---|---|---|
 | Pause / Resume | an admin (Access email) | `/admin`, no gas | No new captures anywhere |
 | Disable / Enable a robot | an admin | `/admin` | No new captures of that robot |
+| Add / Remove a robot | an admin | `/admin` | Listed or not; a removed robot's rides stay in the log |
 | Top up the relayer | an admin | `/admin`, once a minute | `TOPUP_CLAIMS` × 0.0001 ETH from the CDP faucet |
 | Hard stop | owner wallet | `setRelayer(0x0)` on the contract, costs gas | Every `captureBySig` reverts, whatever the Worker does |
 | Take a robot offline | its friend | stop the gateway | Shows offline; captures 409 |

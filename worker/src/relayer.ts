@@ -13,7 +13,7 @@ import {
 import { privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
 import { captureFlagAbi } from "./abi";
 import { chainFor, publicClientFor, rpcUrlOf } from "./chain";
-import { type Config, loadConfig } from "./config";
+import { type Config, loadConfig, type Robot } from "./config";
 import type { Capture } from "./eip712";
 
 /**
@@ -21,7 +21,8 @@ import type { Capture } from "./eip712";
  * holder of RELAYER_PRIVATE_KEY and the only submitter of `captureBySig`, so it can:
  * - keep the relayer's transaction nonce in order when many visitors capture at once;
  * - keep the drivers log and counts, complete because of `onlyRelayer`;
- * - hold the game switches: paused, and disabled per robot.
+ * - hold the game switches: paused, and disabled per robot;
+ * - hold the robot list, which /admin edits (seeded once from `ROBOTS`).
  *
  * The log is written when a transaction is sent, not when it's mined. Simulation and the
  * in-flight cooldown check below make a later revert rare (a deadline passing while
@@ -113,7 +114,59 @@ export class Relayer extends DurableObject<Env> {
         hashes TEXT NOT NULL, sent_block INTEGER NOT NULL, tries INTEGER NOT NULL,
         sent_at INTEGER NOT NULL
       );
+      -- The robots the game lists, in the order they were added (rowid).
+      CREATE TABLE IF NOT EXISTS robots (
+        slug TEXT PRIMARY KEY, name TEXT NOT NULL, gateway TEXT NOT NULL,
+        robot_id TEXT NOT NULL UNIQUE, label TEXT NOT NULL, place TEXT NOT NULL
+      );
     `);
+    // `ROBOTS` is a seed: copied in on the first start, then never read again.
+    if (!this.sql.exec("SELECT 1 FROM kv WHERE key = 'robots_seeded'").toArray().length) {
+      for (const r of this.config.seedRobots) this.insertRobot(r);
+      this.sql.exec("INSERT INTO kv (key, value) VALUES ('robots_seeded', '1')");
+    }
+  }
+
+  // ---- robots ----
+
+  robots(): Robot[] {
+    return this.sql
+      .exec<{ slug: string; name: string; gateway: string; robot_id: string; label: string; place: string }>(
+        "SELECT slug, name, gateway, robot_id, label, place FROM robots ORDER BY rowid"
+      )
+      .toArray()
+      .map((r) => ({ slug: r.slug, name: r.name, gateway: r.gateway, robotId: r.robot_id as `0x${string}`, label: r.label, place: r.place }));
+  }
+
+  /** An already-validated robot (`parseRobot`). Refused, not overwritten, if its slug or
+   * its gateway robot (`robotId`) is already listed. */
+  addRobot(robot: Robot): { ok: true } | { ok: false; error: string } {
+    const clash = this.sql
+      .exec<{ slug: string; robot_id: string }>("SELECT slug, robot_id FROM robots WHERE slug = ? OR robot_id = ?", robot.slug, robot.robotId)
+      .toArray()[0];
+    if (clash) {
+      return {
+        ok: false,
+        error: clash.slug === robot.slug ? `the slug ${robot.slug} is taken` : `that gateway robot is already listed as ${clash.slug}`,
+      };
+    }
+    this.insertRobot(robot);
+    return { ok: true };
+  }
+
+  /** Takes it off the game, with its disable switch. Its drivers and counts stay in the
+   * log (keyed by robotId), so adding the same gateway robot back carries on from them. */
+  removeRobot(slug: string): boolean {
+    const removed = this.sql.exec("DELETE FROM robots WHERE slug = ?", slug).rowsWritten > 0;
+    this.sql.exec("DELETE FROM kv WHERE key = ?", `disabled:${slug}`);
+    return removed;
+  }
+
+  private insertRobot(r: Robot): void {
+    this.sql.exec(
+      "INSERT INTO robots (slug, name, gateway, robot_id, label, place) VALUES (?, ?, ?, ?, ?, ?)",
+      r.slug, r.name, r.gateway, r.robotId, r.label, r.place
+    );
   }
 
   // ---- switches ----

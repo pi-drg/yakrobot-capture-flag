@@ -2,7 +2,7 @@ import { Hono, type MiddlewareHandler } from "hono";
 import { isAddress, isHex, zeroAddress } from "viem";
 import { captureFlagAbi } from "./abi";
 import { type AccessClaims, AccessError, verifyAccess } from "./access";
-import { AdminError, checkSameOrigin, parseAdminCommand } from "./admin";
+import { AdminError, checkSameOrigin, parseAdminCommand, parseRobotCommand } from "./admin";
 import { cooldownRemaining, publicClientFor, readCooldown, rpcUrlOf } from "./chain";
 import { type Config, findRobot, loadConfig, type Robot } from "./config";
 import { CaptureShapeError, DOMAIN_NAME, DOMAIN_VERSION, parseTypedData, recoverPlayer } from "./eip712";
@@ -48,7 +48,7 @@ app.use("*", async (c, next) => {
 
 /** 10 a minute per IP, before any gateway, RPC or relayer call. Cloudflare
  * always sets CF-Connecting-IP in production; without it (local dev), all share one key. */
-for (const path of ["/capture", "/admin/state", "/admin/topup"]) {
+for (const path of ["/capture", "/admin/state", "/admin/topup", "/admin/robots"]) {
   app.post(path, async (c, next) => {
     const ip = ipKey(c.req.header("cf-connecting-ip") ?? "unknown");
     const { success } = await c.env.IP_LIMIT.limit({ key: `${path}:${ip}` });
@@ -76,9 +76,9 @@ async function robotState(robot: Robot, switches: { paused: boolean; disabled: s
 app.get("/", (c) => c.html(indexPage));
 
 /** The robot page, with its robot's config inlined so it needs no extra fetch. */
-app.get("/r/:robot", (c) => {
+app.get("/r/:robot", async (c) => {
   const config = c.get("config");
-  const robot = findRobot(config, c.req.param("robot"));
+  const robot = findRobot(await relayer(c.env).robots(), c.req.param("robot"));
   if (!robot) return c.text("unknown robot", 404);
   const data = JSON.stringify({
     slug: robot.slug,
@@ -119,6 +119,7 @@ const sameOriginJson: MiddlewareHandler<AppEnv> = async (c, next) => {
 };
 app.post("/admin/state", sameOriginJson);
 app.post("/admin/topup", sameOriginJson);
+app.post("/admin/robots", sameOriginJson);
 
 app.get("/admin", (c) => c.html(adminPage));
 
@@ -126,7 +127,12 @@ app.get("/admin", (c) => c.html(adminPage));
 async function adminState(env: Env, config: Config, admin: AccessClaims) {
   const stub = relayer(env);
   // The balance comes from /health's 30 s cache.
-  const [switches, totals, health] = await Promise.all([stub.switches(), stub.robotTotals(), checkHealth(env, config, stub)]);
+  const [switches, totals, health, robots] = await Promise.all([
+    stub.switches(),
+    stub.robotTotals(),
+    checkHealth(env, config, stub),
+    stub.robots(),
+  ]);
   return {
     chainId: config.chainId,
     contract: config.contract,
@@ -143,9 +149,11 @@ async function adminState(env: Env, config: Config, admin: AccessClaims) {
       configured: faucetConfigured(env),
       claims: config.topupClaims,
     },
-    robots: config.robots.map((r) => ({
+    robots: robots.map((r) => ({
       slug: r.slug,
       label: r.label,
+      gateway: r.gateway,
+      name: r.name,
       place: r.place,
       disabled: switches.disabled.includes(r.slug),
       rides: totals[r.robotId]?.rides ?? 0,
@@ -161,7 +169,7 @@ app.post("/admin/state", async (c) => {
   const config = c.get("config");
   const admin = c.get("admin");
   try {
-    const cmd = parseAdminCommand(config, await c.req.json().catch(() => null));
+    const cmd = parseAdminCommand(await relayer(c.env).robots(), await c.req.json().catch(() => null));
     await relayer(c.env).setSwitch(cmd.target, cmd.action === "pause" || cmd.action === "disable");
     console.log("capture-flag admin", JSON.stringify({ email: admin.email, ...cmd }));
   } catch (err) {
@@ -169,6 +177,27 @@ app.post("/admin/state", async (c) => {
     throw err;
   }
   return c.json(await adminState(c.env, config, admin));
+});
+
+/** Add or remove a robot. Logged with the admin's email. The slug is in the friend's
+ * TELEOP_CAPTURE_FLAG_CLAIM_URL, so it can't be edited: remove and add instead. */
+app.post("/admin/robots", async (c) => {
+  const admin = c.get("admin");
+  try {
+    const cmd = parseRobotCommand(await c.req.json().catch(() => null));
+    if (cmd.action === "add") {
+      const added = await relayer(c.env).addRobot(cmd.robot);
+      if (!added.ok) return c.json({ error: added.error }, 409);
+      console.log("capture-flag admin", JSON.stringify({ email: admin.email, action: "add", slug: cmd.robot.slug, gateway: cmd.robot.gateway }));
+    } else {
+      if (!(await relayer(c.env).removeRobot(cmd.slug))) return c.json({ error: "no robot with that slug" }, 404);
+      console.log("capture-flag admin", JSON.stringify({ email: admin.email, action: "remove", slug: cmd.slug }));
+    }
+  } catch (err) {
+    if (err instanceof AdminError) return c.json({ error: err.message }, err.status);
+    throw err;
+  }
+  return c.json(await adminState(c.env, c.get("config"), admin));
 });
 
 /** Claims TOPUP_CLAIMS times from the CDP faucet for the relayer and returns the hashes,
@@ -203,8 +232,8 @@ app.get("/health", async (c) => {
  * origin: simulator.yakrobot.com polls it to say when a robot is free. Public data and a
  * simple GET, so there is no preflight to answer. */
 app.get("/robots", async (c) => {
-  const { robots } = c.get("config");
-  const switches = await relayer(c.env).switches();
+  const stub = relayer(c.env);
+  const [robots, switches] = await Promise.all([stub.robots(), stub.switches()]);
   const states = await Promise.all(robots.map((r) => robotState(r, switches)));
   c.header("Access-Control-Allow-Origin", "*");
   return c.json({
@@ -214,7 +243,7 @@ app.get("/robots", async (c) => {
 });
 
 app.get("/r/:robot/status", async (c) => {
-  const robot = findRobot(c.get("config"), c.req.param("robot"));
+  const robot = findRobot(await relayer(c.env).robots(), c.req.param("robot"));
   if (!robot) return c.json({ error: "unknown robot" }, 404);
   return c.json(await robotState(robot, await relayer(c.env).switches()));
 });
@@ -230,7 +259,7 @@ async function withNames(env: Env, ctx: { waitUntil(p: Promise<unknown>): void }
 /** Recent drivers and the ranking from the relayer's log, plus the on-chain leader. */
 app.get("/r/:robot/drivers", async (c) => {
   const config = c.get("config");
-  const robot = findRobot(config, c.req.param("robot"));
+  const robot = findRobot(await relayer(c.env).robots(), c.req.param("robot"));
   if (!robot) return c.json({ error: "unknown robot" }, 404);
   const log = await relayer(c.env).drivers(robot.robotId, config.driversShown);
   let leader: { player: string; rides: number } | null = null;
@@ -253,7 +282,7 @@ app.get("/r/:robot/drivers", async (c) => {
 /** Where a capture's transaction is now: the relayer may have re-sent it with a higher
  * fee (new hash) or given it up (404). The robot page polls this, not the first hash. */
 app.get("/r/:robot/capture", async (c) => {
-  const robot = findRobot(c.get("config"), c.req.param("robot"));
+  const robot = findRobot(await relayer(c.env).robots(), c.req.param("robot"));
   if (!robot) return c.json({ error: "unknown robot" }, 404);
   const player = c.req.query("player") ?? "";
   const nonce = c.req.query("nonce") ?? "";
@@ -300,7 +329,7 @@ app.post("/capture", async (c) => {
   ) {
     return fail(400, "wrong EIP-712 domain for this game");
   }
-  const robot = config.robots.find((r) => r.robotId === message.robotId);
+  const robot = (await relayer(c.env).robots()).find((r) => r.robotId === message.robotId);
   if (!robot) return fail(400, "unknown robot");
   const sig = body.sig;
   if (typeof sig !== "string" || !isHex(sig) || sig.length !== 132) {

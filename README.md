@@ -22,18 +22,17 @@ README, "Running a robot in the capture-flag game", for the friend's side. See
 1. The friend sends a **fixed** gateway hostname and the robot name (e.g.
    `picar_freenove`). The robot's on-chain id is `keccak256(host + "/" + robot)`, so a
    new hostname is a new robot with counters from zero.
-2. Add an entry to `ROBOTS` in `worker/wrangler.jsonc`, keyed by a slug of our own (the
-   page lives at `/r/<slug>`; `game` is reserved):
+2. On `/admin`, **Add a robot**: a slug of our own (the page lives at `/r/<slug>`; `game`
+   is reserved), the gateway address, the robot name, a label and a place. No redeploy.
+   The page then asks the gateway once and says whether it answers.
+3. Tell the friend their claim URL, `https://capture-flag.yakrobot.com/r/<slug>` (shown on
+   the robot's row), for `TELEOP_CAPTURE_FLAG_CLAIM_URL`.
 
-   ```json
-   {"berlin": {"gateway": "https://<fixed host>", "robot": "picar_freenove",
-               "label": "Freenove PiCar", "place": "Berlin"}}
-   ```
-
-3. Tell the friend their claim URL, `https://capture-flag.yakrobot.com/r/<slug>`, for
-   `TELEOP_CAPTURE_FLAG_CLAIM_URL`.
-4. Redeploy the Worker (see Upgrading). The robot starts enabled; it shows as playable
-   whenever the friend's gateway is up.
+The robot starts enabled and shows as playable whenever the friend's gateway is up. A
+slug can't be changed, since the friend's claim URL holds it: remove the robot and add it
+again instead. Removing keeps its rides, and adding the same gateway and robot name back
+carries on from them. `ROBOTS` in `wrangler.jsonc` only seeds the list on the relayer's
+first start.
 
 ### Pause / Resume, Disable / Enable
 

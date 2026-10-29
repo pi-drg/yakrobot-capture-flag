@@ -288,6 +288,13 @@
       function short(addr) {
         return addr.slice(0, 6) + "…" + addr.slice(-4);
       }
+      // A player's verified Basename or ENS name if the Worker knows one, else 0x12ab…cdef.
+      // Names are user-chosen text: always inserted as a text node, and cut at 32 characters.
+      function playerLink(addr, names) {
+        var name = names && names[addr.toLowerCase()];
+        var text = name ? (name.length > 32 ? name.slice(0, 31) + "…" : name) : short(addr);
+        return el("a", { class: name ? "" : "mono", href: EXPLORER + "/address/" + addr, title: addr, target: "_blank", rel: "noopener" }, [text]);
+      }
       function clock(unix) {
         return new Date(unix * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
       }
@@ -366,7 +373,7 @@
           return el("tr", { class: i === 0 ? "first" : "" }, [
             el("td", { class: "rank" }, [String(i + 1)]),
             el("td", {}, [
-              el("a", { class: "mono", href: EXPLORER + "/address/" + p.player, target: "_blank", rel: "noopener" }, [short(p.player)]),
+              playerLink(p.player, data.names),
             ]),
             el("td", { class: "num robots-col" }, [String(p.robots)]),
             el("td", { class: "num" }, [String(p.rides)]),

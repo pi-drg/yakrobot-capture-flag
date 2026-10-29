@@ -8,6 +8,7 @@ import { CaptureShapeError, DOMAIN_NAME, DOMAIN_VERSION, parseTypedData, recover
 import { type GatewayState, readGatewayState } from "./gateway";
 import { checkHealth } from "./health";
 import { ipKey } from "./ip";
+import { ensReaderFor, refreshNames } from "./names";
 import { RELAYER_NAME } from "./relayer";
 import adminPage from "../static/admin.html";
 import claimPage from "../static/claim.html";
@@ -173,6 +174,14 @@ app.get("/r/:robot/status", async (c) => {
   return c.json(await robotState(robot, await relayer(c.env).switches()));
 });
 
+/** Cached names for these players, and a background refresh of any that are stale. */
+async function withNames(env: Env, ctx: { waitUntil(p: Promise<unknown>): void }, players: string[]): Promise<Record<string, string>> {
+  const stub = relayer(env);
+  const reader = ensReaderFor(env);
+  if (reader) ctx.waitUntil(refreshNames(reader, stub, players).catch(() => undefined));
+  return stub.namesFor(players);
+}
+
 /** Recent drivers and the ranking from the relayer's log, plus the on-chain leader. */
 app.get("/r/:robot/drivers", async (c) => {
   const config = c.get("config");
@@ -191,7 +200,9 @@ app.get("/r/:robot/drivers", async (c) => {
   } catch {
     // The page still has the log's ranking; the on-chain leader is a cross-check.
   }
-  return c.json({ ...log, leader, contract: config.contract });
+  const players = [...log.recent, ...log.top].map((p) => p.player).concat(leader ? [leader.player] : []);
+  const names = await withNames(c.env, c.executionCtx, players);
+  return c.json({ ...log, leader, names, contract: config.contract });
 });
 
 /** Where a capture's transaction is now: the relayer may have re-sent it with a higher
@@ -210,10 +221,9 @@ app.get("/r/:robot/capture", async (c) => {
 
 app.get("/leaderboard", async (c) => {
   const config = c.get("config");
-  return c.json({
-    contract: config.contract,
-    top: await relayer(c.env).leaderboard(config.driversShown),
-  });
+  const top = await relayer(c.env).leaderboard(config.driversShown);
+  const names = await withNames(c.env, c.executionCtx, top.map((p) => p.player));
+  return c.json({ contract: config.contract, top, names });
 });
 
 /** Every check that costs no gas runs here, in order, before the relayer. */

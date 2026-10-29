@@ -104,6 +104,8 @@ export class Relayer extends DurableObject<Env> {
         player TEXT PRIMARY KEY, n INTEGER NOT NULL, reached INTEGER NOT NULL
       );
       CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      -- Player names (src/names.ts); name is NULL when the address has none.
+      CREATE TABLE IF NOT EXISTS names (address TEXT PRIMARY KEY, name TEXT, checked_at INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS pending (
         nonce INTEGER PRIMARY KEY, seq INTEGER NOT NULL, capture TEXT NOT NULL, sig TEXT NOT NULL,
         hashes TEXT NOT NULL, sent_block INTEGER NOT NULL, tries INTEGER NOT NULL,
@@ -542,6 +544,45 @@ export class Relayer extends DurableObject<Env> {
       )
       .toArray();
     return Object.fromEntries(rows.map((r) => [r.robot_id, { rides: r.rides, drivers: r.drivers }]));
+  }
+
+  // ---- player names ----
+
+  /** Cached names for these (lowercase) addresses; addresses with none are left out. */
+  namesFor(addresses: string[]): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const address of new Set(addresses)) {
+      const row = this.sql
+        .exec<{ name: string | null }>("SELECT name FROM names WHERE address = ?", address)
+        .toArray()[0];
+      if (row?.name) out[address] = row.name;
+    }
+    return out;
+  }
+
+  /** Which of these addresses have no name check newer than `ttlSeconds`, up to `limit`. */
+  staleNames(addresses: string[], ttlSeconds: number, limit: number): string[] {
+    const cutoff = Math.floor(Date.now() / 1000) - ttlSeconds;
+    return addresses
+      .filter((address) => {
+        const row = this.sql
+          .exec<{ checked_at: number }>("SELECT checked_at FROM names WHERE address = ?", address)
+          .toArray()[0];
+        return !row || row.checked_at < cutoff;
+      })
+      .slice(0, limit);
+  }
+
+  saveNames(entries: Array<{ address: string; name: string | null }>): void {
+    const now = Math.floor(Date.now() / 1000);
+    for (const { address, name } of entries) {
+      this.sql.exec(
+        "INSERT OR REPLACE INTO names (address, name, checked_at) VALUES (?, ?, ?)",
+        address.toLowerCase(),
+        name,
+        now
+      );
+    }
   }
 
   /** The network leaderboard: rides across every robot, and how many robots driven. */

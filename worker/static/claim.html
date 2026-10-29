@@ -279,6 +279,13 @@
         return node;
       }
       function short(addr) { return addr.slice(0, 6) + "…" + addr.slice(-4); }
+      // A player's verified Basename or ENS name if the Worker knows one, else 0x12ab…cdef.
+      // Names are user-chosen text: always inserted as a text node, and cut at 32 characters.
+      function playerLink(addr, names) {
+        var name = names && names[addr.toLowerCase()];
+        var text = name ? (name.length > 32 ? name.slice(0, 31) + "…" : name) : short(addr);
+        return el("a", { class: name ? "" : "mono", href: EXPLORER + "/address/" + addr, title: addr, target: "_blank", rel: "noopener" }, [text]);
+      }
       function clock(unix) { return new Date(unix * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); }
       function ago(unix) {
         var s = Math.max(0, Math.floor(Date.now() / 1000 - unix));
@@ -375,7 +382,7 @@
         if (d.leader) {
           leader.replaceChildren(
             el("p", { class: "eyebrow" }, ["Most rides"]),
-            el("p", { class: "big" }, [link(EXPLORER + "/address/" + d.leader.player, short(d.leader.player))]),
+            el("p", { class: "big" }, [playerLink(d.leader.player, d.names)]),
             el("p", { class: "muted" }, [d.leader.rides + (d.leader.rides === 1 ? " ride, " : " rides, "), link(EXPLORER + "/address/" + d.contract, "on-chain")]),
             stats
           );
@@ -392,7 +399,7 @@
           recent,
           d.recent.map(function (r) {
             return el("li", {}, [
-              link(EXPLORER + "/address/" + r.player, short(r.player)),
+              playerLink(r.player, d.names),
               el("a", { class: "ago", href: EXPLORER + "/tx/" + r.tx, target: "_blank", rel: "noopener" }, ["drove " + ago(r.at)]),
             ]);
           })

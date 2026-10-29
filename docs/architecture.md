@@ -102,7 +102,7 @@ One Cloudflare Worker (Hono + viem) with one Durable Object.
 |---|---|
 | `POST /capture` | Every gas-free check, in order, then the relayer. 409 if the robot is busy or offline (no gas spent). |
 | `GET /robots`, `GET /r/:robot/status` | The switches first, then each gateway's `GET /` (3 s timeout). |
-| `GET /r/:robot/drivers`, `GET /leaderboard` | From the relayer's log, plus the on-chain leader. |
+| `GET /r/:robot/drivers`, `GET /leaderboard` | From the relayer's log, plus the on-chain leader and a `names` map. |
 | `GET /r/:robot/capture?player&nonce` | A capture's current transaction (it may have been re-sent), or 404 if it failed. |
 | `GET/POST /admin/state` | The switches; POST takes an owner-signed message. |
 | `GET /health` | Relayer balance, `relayer() == ours`, unmined sends. 503 when not ok. |
@@ -116,11 +116,16 @@ the relayer key is read. It:
   +25% (up to 3 times), or, if it would now revert, sends a no-op to free the nonce and
   marks the capture `reverted`;
 - holds the switches: `paused` (the whole game, **on** after a fresh deploy) and
-  `disabled:<robot>`.
+  `disabled:<robot>`;
+- caches player names: a Base primary name (`alice.base.eth`), else a mainnet ENS name,
+  both looked up through the ENS Universal Resolver on Ethereum mainnet (ENSIP-19), which
+  checks the name points back to the address. Re-checked daily; looked up after the
+  response, so pages never wait for them.
 
 **Configuration** (`wrangler.jsonc`): `CHAIN`, `CONTRACT`, `ROBOTS` (slug →
 `{gateway, robot, label, place}`), `RELAYER_MIN_WEI`, `DRIVERS_SHOWN`, `SENDS_PER_HOUR`.
-Secrets: `RELAYER_PRIVATE_KEY`, `RPC_URL`. Triggers: a cron every 15 minutes that logs
+Secrets: `RELAYER_PRIVATE_KEY`, `RPC_URL`, and optionally `ENS_RPC_URL` (an Ethereum
+mainnet RPC; player names are off without it). Triggers: a cron every 15 minutes that logs
 when `/health` fails.
 
 ## The gateway

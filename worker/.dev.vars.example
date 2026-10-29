@@ -8,3 +8,10 @@ RELAYER_PRIVATE_KEY=
 # JSON-RPC for CHAIN. The public endpoint is fine for the pilot; for an event, use a
 # provider URL (it may embed an API key, which is why this is a secret, not a var).
 RPC_URL=https://sepolia.base.org
+
+# /admin is behind Cloudflare Access, which `wrangler dev` can't put in front, so it 401s
+# locally (or 501s with CF_ACCESS_AUD blank). The tests cover it.
+
+# Optional: a CDP Secret API Key (Ed25519) for /admin's faucet top-up, Base Sepolia only.
+# CDP_API_KEY_ID=
+# CDP_API_KEY_SECRET=

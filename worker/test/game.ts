@@ -12,3 +12,8 @@ export function randomIp(): string {
   const [a, b] = Array.from(crypto.getRandomValues(new Uint16Array(2)), (n) => n.toString(16));
   return `2001:db8:${a}:${b}::1`;
 }
+
+/** What the admin page's fetches carry: a JSON body, and the Access JWT the edge adds. */
+export function adminHeaders(token: string): Record<string, string> {
+  return { "content-type": "application/json", "cf-connecting-ip": randomIp(), "cf-access-jwt-assertion": token };
+}

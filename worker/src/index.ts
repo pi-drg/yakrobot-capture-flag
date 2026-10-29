@@ -1,22 +1,25 @@
-import { Hono } from "hono";
+import { Hono, type MiddlewareHandler } from "hono";
 import { isAddress, isHex, zeroAddress } from "viem";
 import { captureFlagAbi } from "./abi";
-import { AdminError, checkOwner, parseAdminMessage, readOwner } from "./admin";
+import { type AccessClaims, AccessError, verifyAccess } from "./access";
+import { AdminError, checkSameOrigin, parseAdminCommand } from "./admin";
 import { cooldownRemaining, publicClientFor, readCooldown, rpcUrlOf } from "./chain";
 import { type Config, findRobot, loadConfig, type Robot } from "./config";
 import { CaptureShapeError, DOMAIN_NAME, DOMAIN_VERSION, parseTypedData, recoverPlayer } from "./eip712";
 import { type GatewayState, readGatewayState } from "./gateway";
+import { FAUCET_CHAIN_ID, FaucetError, faucetConfigured, topUp } from "./faucet";
 import { checkHealth } from "./health";
 import { ipKey } from "./ip";
 import { ensReaderFor, refreshNames } from "./names";
-import { RELAYER_NAME } from "./relayer";
+import { RELAYER_NAME, TOPUP_GAP_S } from "./relayer";
 import adminPage from "../static/admin.html";
 import claimPage from "../static/claim.html";
 import indexPage from "../static/index.html";
 
 export { Relayer } from "./relayer";
 
-const app = new Hono<{ Bindings: Env; Variables: { config: Config } }>();
+type AppEnv = { Bindings: Env; Variables: { config: Config; admin: AccessClaims } };
+const app = new Hono<AppEnv>();
 
 /** How long after a capture its ride can still start, the gateway's default. */
 const VALID_MINUTES = 30;
@@ -45,7 +48,7 @@ app.use("*", async (c, next) => {
 
 /** 10 a minute per IP, before any gateway, RPC or relayer call. Cloudflare
  * always sets CF-Connecting-IP in production; without it (local dev), all share one key. */
-for (const path of ["/capture", "/admin/state"]) {
+for (const path of ["/capture", "/admin/state", "/admin/topup"]) {
   app.post(path, async (c, next) => {
     const ip = ipKey(c.req.header("cf-connecting-ip") ?? "unknown");
     const { success } = await c.env.IP_LIMIT.limit({ key: `${path}:${ip}` });
@@ -91,16 +94,55 @@ app.get("/r/:robot", (c) => {
   return c.html(claimPage.replace("__ROBOT__", () => data));
 });
 
+/** Everything under /admin is for admins: Cloudflare Access logs them in at the edge, and
+ * this checks its JWT (src/access.ts). Both patterns, since "/admin/*" may not match "/admin". */
+const requireAccess: MiddlewareHandler<AppEnv> = async (c, next) => {
+  try {
+    c.set("admin", await verifyAccess(c.req.raw, c.env));
+  } catch (err) {
+    if (err instanceof AccessError) return c.json({ error: err.message }, err.status);
+    throw err;
+  }
+  await next();
+};
+app.use("/admin", requireAccess);
+app.use("/admin/*", requireAccess);
+
+const sameOriginJson: MiddlewareHandler<AppEnv> = async (c, next) => {
+  try {
+    checkSameOrigin(c.req.raw);
+  } catch (err) {
+    if (err instanceof AdminError) return c.json({ error: err.message }, err.status);
+    throw err;
+  }
+  await next();
+};
+app.post("/admin/state", sameOriginJson);
+app.post("/admin/topup", sameOriginJson);
+
 app.get("/admin", (c) => c.html(adminPage));
 
-/** What the admin page shows: the switches and each robot's counts. */
-async function adminState(env: Env, config: Config) {
+/** What the admin page shows: the switches, each robot's counts, the relayer's gas, and who's signed in. */
+async function adminState(env: Env, config: Config, admin: AccessClaims) {
   const stub = relayer(env);
-  const [switches, totals] = await Promise.all([stub.switches(), stub.robotTotals()]);
+  // The balance comes from /health's 30 s cache.
+  const [switches, totals, health] = await Promise.all([stub.switches(), stub.robotTotals(), checkHealth(env, config, stub)]);
   return {
     chainId: config.chainId,
     contract: config.contract,
+    admin: { email: admin.email },
     paused: switches.paused,
+    relayer: {
+      address: health.relayer,
+      balance_wei: health.balance_wei,
+      min_wei: config.relayerMinWei.toString(),
+    },
+    // Base Sepolia only: CDP has no mainnet faucet.
+    faucet: {
+      available: config.chainId === FAUCET_CHAIN_ID,
+      configured: faucetConfigured(env),
+      claims: config.topupClaims,
+    },
     robots: config.robots.map((r) => ({
       slug: r.slug,
       label: r.label,
@@ -112,43 +154,43 @@ async function adminState(env: Env, config: Config) {
   };
 }
 
-app.get("/admin/state", async (c) => {
-  const config = c.get("config");
-  let owner: string | null = null;
-  try {
-    owner = await readOwner(publicClientFor(config, rpcUrlOf(c.env)), config);
-  } catch {
-    // The page can still show the state; signing will tell it the chain is down.
-  }
-  return c.json({ ...(await adminState(c.env, config)), owner });
-});
+app.get("/admin/state", async (c) => c.json(await adminState(c.env, c.get("config"), c.get("admin"))));
 
-/** Parse, check the time, check the owner's signature, then switch. */
+/** A switch: {action, target}. Logged with the admin's email. */
 app.post("/admin/state", async (c) => {
   const config = c.get("config");
-  let body: { message?: unknown; signature?: unknown };
+  const admin = c.get("admin");
   try {
-    body = await c.req.json();
-  } catch {
-    return c.json({ error: "body must be JSON {message, signature}" }, 400);
-  }
-  try {
-    const cmd = parseAdminMessage(config, body.message, Math.floor(Date.now() / 1000));
-    try {
-      await checkOwner(publicClientFor(config, rpcUrlOf(c.env)), config, body.message as string, body.signature);
-    } catch (err) {
-      if (err instanceof AdminError) throw err;
-      return c.json({ error: "chain unavailable, try again shortly" }, 503);
-    }
-    const on = cmd.action === "pause" || cmd.action === "disable";
-    if (!(await relayer(c.env).applySwitch(cmd.target, on, cmd.issued))) {
-      throw new AdminError(400, "a newer change was already applied, sign again");
-    }
+    const cmd = parseAdminCommand(config, await c.req.json().catch(() => null));
+    await relayer(c.env).setSwitch(cmd.target, cmd.action === "pause" || cmd.action === "disable");
+    console.log("capture-flag admin", JSON.stringify({ email: admin.email, ...cmd }));
   } catch (err) {
     if (err instanceof AdminError) return c.json({ error: err.message }, err.status);
     throw err;
   }
-  return c.json(await adminState(c.env, config));
+  return c.json(await adminState(c.env, config, admin));
+});
+
+/** Claims TOPUP_CLAIMS times from the CDP faucet for the relayer and returns the hashes,
+ * without waiting for them. One a minute (claimTopup). */
+app.post("/admin/topup", async (c) => {
+  const config = c.get("config");
+  if (config.chainId !== FAUCET_CHAIN_ID) return c.json({ error: "the faucet is Base Sepolia only" }, 400);
+  if (!faucetConfigured(c.env)) return c.json({ error: "the faucet key isn't set on the Worker" }, 503);
+  const address = await relayer(c.env).address();
+  if (!address) return c.json({ error: "the relayer key isn't set" }, 503);
+  if (!(await relayer(c.env).claimTopup(Math.floor(Date.now() / 1000)))) {
+    c.header("Retry-After", String(TOPUP_GAP_S));
+    return c.json({ error: "a top-up just ran, wait a minute" }, 429);
+  }
+  try {
+    const result = await topUp(c.env, address, config.topupClaims);
+    console.log("capture-flag topup", JSON.stringify({ email: c.get("admin").email, claims: result.hashes.length, error: result.error }));
+    return c.json({ claims: result.hashes.length, hashes: result.hashes, error: result.error }, result.hashes.length ? 200 : 502);
+  } catch (err) {
+    if (err instanceof FaucetError) return c.json({ error: err.message }, 503);
+    throw err;
+  }
 });
 
 /** 503 when the relayer can't pay gas or the contract no longer accepts it. */

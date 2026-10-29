@@ -21,7 +21,13 @@ Architecture (contract, Worker, gateway, a ride end to end, controls, limits):
   (`cast wallet import`), never in a file. Print derived *public addresses* only.
 - **This Worker holds one gas-only hot wallet** (the relayer). It pays gas for
   `captureBySig` and nothing else; it never holds tokens or USDC, and the contract has
-  no `payable` function.
+  no `payable` function. Its only other key is an optional CDP Secret API Key, used for
+  the faucet top-up and nothing else (`src/faucet.ts`), set by the user as a secret.
+- **`/admin` is behind Cloudflare Access** (`CF_ACCESS_TEAM_DOMAIN`, `CF_ACCESS_AUD` in
+  `wrangler.jsonc`, public constants). The Worker verifies the Access JWT itself
+  (`src/access.ts`); keep `workers_dev` and `preview_urls` `false`, and never set
+  `CF_ACCESS_CERTS_URL` outside tests. Access policies are the user's dashboard action,
+  like deploys. The owner wallet is for the contract only, never the Worker.
 - **Commits are signed and signed off** (`git commit -S -s`), with short messages.
 
 ## Layout

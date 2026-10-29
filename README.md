@@ -6,8 +6,8 @@ in your wallet, and drive it for 5 minutes. Each capture is one transaction on B
 records the ride and moves no tokens; the game's relayer pays the gas.
 
 - `contracts/`: the `CaptureFlag` contract (Foundry).
-- `worker/`: the relayer, the index and robot pages, and the owner's admin page
-  (Cloudflare Workers, Hono, viem).
+- `worker/`: the relayer, the index and robot pages, and the admin page behind Cloudflare
+  Access (Cloudflare Workers, Hono, viem).
 
 How the pieces fit: [docs/architecture.md](docs/architecture.md).
 
@@ -37,8 +37,8 @@ README, "Running a robot in the capture-flag game", for the friend's side. See
 
 ### Pause / Resume, Disable / Enable
 
-Open `/admin`, connect the owner wallet (`owner()` of the contract), and press a button.
-Each one is a `personal_sign` of a short message: no gas, no transaction.
+Log in to `/admin` and press a button: no wallet, no gas, no transaction. Each change is
+logged with the admin's email (`wrangler tail`).
 
 - **Pause / Resume** stops or restarts new captures everywhere. A fresh deploy starts
   **paused**.
@@ -47,6 +47,23 @@ Each one is a `personal_sign` of a short message: no gas, no transaction.
 Rides already started finish, and a capture made just before the switch can still start
 its ride at the gateway within 30 minutes, since the gateway reads the chain, not the
 Worker.
+
+### Topping up the relayer
+
+`/admin` shows the relayer's balance. **Top up** claims `TOPUP_CLAIMS` (20) × 0.0001 ETH
+(0.002 ETH, about 2,400 new-player rides at 0.006 gwei) from the CDP faucet, at most once a
+minute; CDP caps an address at 0.1 ETH a day. 20 is the most that fits one request on the
+Workers Free plan (50 outside calls, one of them the Access check). Base Sepolia only. It needs a CDP Secret API Key (Ed25519, the default;
+no wallet secret) from portal.cdp.coinbase.com, with the narrowest permissions the portal
+offers (it only claims from the faucet), set once:
+
+```bash
+cd worker
+wrangler secret put CDP_API_KEY_ID
+wrangler secret put CDP_API_KEY_SECRET
+```
+
+Without the key, the button reads "Faucet key not set" and nothing else changes.
 
 ### Upgrading
 
@@ -58,8 +75,9 @@ Worker.
 
 ### Hard stop
 
-For a leaked relayer key, a compromised Worker, or before replacing the contract: from
-the owner wallet, call `setRelayer(0x0000000000000000000000000000000000000000)` on the
+The owner wallet is used only here and for `setCooldown`, from Basescan or `cast`, never
+through the Worker. For a leaked relayer key, a compromised Worker, or before replacing the
+contract: from the owner wallet, call `setRelayer(0x0000000000000000000000000000000000000000)` on the
 contract (Basescan's "Write Contract" tab works). Every `captureBySig` then reverts,
 whatever the Worker does, and `/capture` returns 503. Undo it with
 `setRelayer(<relayer address>)`. Each call costs a little gas.

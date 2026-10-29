@@ -32,7 +32,12 @@ export interface Config {
   relayerMinWei: bigint;
   driversShown: number;
   sendsPerHour: number;
+  /** Faucet claims per /admin top-up; at most MAX_TOPUP_CLAIMS. */
+  topupClaims: number;
 }
+
+/** Each claim is an outside subrequest; the Workers Free plan allows 50 per request, and the Access check takes one. */
+export const MAX_TOPUP_CLAIMS = 20;
 
 /** Whatever shape env vars arrive in — a Worker's `Env`, or a plain object in tests. */
 export type RawEnv = Record<string, string | undefined>;
@@ -155,6 +160,8 @@ export function loadConfig(env: RawEnv): Config {
   if (!/^[0-9]+$/.test(relayerMinWei)) {
     throw new ConfigError("RELAYER_MIN_WEI must be a non-negative integer (wei)");
   }
+  const topupClaims = validatePositiveInt("TOPUP_CLAIMS", requireVar(env, "TOPUP_CLAIMS"));
+  if (topupClaims > MAX_TOPUP_CLAIMS) throw new ConfigError(`TOPUP_CLAIMS must be at most ${MAX_TOPUP_CLAIMS}`);
   return {
     chainId: chainId as 84532 | 8453,
     contract: contract.toLowerCase() as `0x${string}`,
@@ -162,6 +169,7 @@ export function loadConfig(env: RawEnv): Config {
     relayerMinWei: BigInt(relayerMinWei),
     driversShown: validatePositiveInt("DRIVERS_SHOWN", requireVar(env, "DRIVERS_SHOWN")),
     sendsPerHour: validatePositiveInt("SENDS_PER_HOUR", requireVar(env, "SENDS_PER_HOUR")),
+    topupClaims,
   };
 }
 

@@ -79,12 +79,31 @@
         border-bottom: 1px solid var(--hairline);
       }
       .nav-inner { height: 64px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-      .brand { display: flex; align-items: center; gap: 11px; }
-      .pmark { width: 24px; height: 27px; flex: none; color: var(--primary); }
-      .pmark path { stroke: currentColor; stroke-width: 46; fill: none; stroke-linecap: round; stroke-linejoin: round; }
-      .brand-name { font-family: var(--font-serif); font-size: 21px; line-height: 1; }
-      .nav-link { font-family: var(--font-sans); font-size: 14px; padding: 8px 12px; border-radius: 6px; }
-      .nav-link:hover { color: var(--primary); }
+      .brand { display: flex; align-items: center; gap: 11px; color: var(--ink-dark); }
+      .brand .brand-symbol { width: 30px; height: 30px; flex: none; }
+      .brand-name { font-family: var(--font-serif); font-size: 21px; line-height: 1; letter-spacing: -0.01em; }
+      .brand-name b { font-weight: 400; }
+      .brand-tag {
+        margin-left: 4px;
+        padding: 3px 9px;
+        border-radius: var(--radius-pill);
+        background: var(--primary-light-bg);
+        color: var(--primary);
+        font: 500 12px var(--font-sans);
+        white-space: nowrap;
+      }
+      .navlinks { display: flex; align-items: center; gap: 4px; }
+      .navlinks a {
+        font-family: var(--font-sans);
+        font-size: 14px;
+        color: var(--ink-dark);
+        padding: 8px 12px;
+        border-radius: 6px;
+        transition: color 0.15s ease;
+      }
+      .navlinks a:hover { color: var(--primary); }
+      .navlinks a.nav-cta { margin-left: 6px; padding: 8px 16px; background: var(--ink-dark); color: #fff; border-radius: var(--radius-md); }
+      .navlinks a.nav-cta:hover { background: #000; color: #fff; }
 
       /* robot hero */
       .hero { padding: 56px 0 44px; border-bottom: 1px solid var(--hairline-soft); }
@@ -137,6 +156,10 @@
       .btn.ghost { background: var(--surface-white); color: var(--primary); border: 1px solid var(--primary); }
       .btn.ghost:hover { background: var(--primary-light-bg); }
       .btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
+      .sim-line { margin: 10px 0 0; font-family: var(--font-sans); font-size: 14px; color: var(--ink-secondary); }
+      .sim-line[hidden] { display: none; }
+      .sim-line a { color: var(--primary); font-weight: 500; }
+      .sim-line a:hover { text-decoration: underline; text-underline-offset: 2px; }
       .note { font-family: var(--font-sans); font-size: 13px; color: var(--ink-secondary); margin: 0; }
       .msg { font-family: var(--font-sans); font-size: 15px; margin: 0; }
       .msg.err { color: var(--accent); }
@@ -161,13 +184,34 @@
       .list a:hover, .leader a:hover { color: var(--primary); }
       .ago { color: var(--ink-secondary); white-space: nowrap; }
 
-      footer.site { border-top: 1px solid var(--hairline); padding: 32px 0 48px; }
-      footer .row { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-family: var(--font-sans); font-size: 13px; color: var(--ink-secondary); }
-      footer a { text-decoration: underline; text-underline-offset: 2px; }
-      footer a:hover { color: var(--primary); }
+      footer.site { background: var(--surface-white); border-top: 1px solid var(--hairline); }
+      .foot-grid { display: grid; grid-template-columns: 1.5fr 1fr 1fr; gap: 36px; padding: 56px 0 36px; }
+      .foot-brand { display: flex; align-items: center; gap: 11px; margin-bottom: 14px; }
+      .foot-brand img { width: 26px; height: 26px; }
+      .foot-blurb { font-size: 14.5px; line-height: 1.6; color: var(--ink-secondary); max-width: 36ch; margin: 0; }
+      .foot-col h4 { font-family: var(--font-sans); font-size: 12px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-secondary); margin: 0 0 14px; }
+      .foot-col a { display: block; font-family: var(--font-sans); font-size: 14px; color: var(--ink-secondary); padding: 5px 0; }
+      .foot-col a:hover { color: var(--primary); }
+      .ext::after { content: " ↗"; }
+      .foot-bottom {
+        border-top: 1px solid var(--hairline-soft);
+        padding: 22px 0 14px;
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        flex-wrap: wrap;
+        font: 13px var(--font-sans);
+        color: var(--ink-secondary);
+      }
+      .foot-bottom a { text-decoration: underline; text-underline-offset: 2px; }
+      .foot-bottom a:hover { color: var(--primary); }
+      .foot-note { margin: 0; padding: 0 0 40px; font: 12px/1.5 var(--font-sans); color: var(--ink-secondary); opacity: 0.85; }
+      .foot-note a { text-decoration: underline; text-underline-offset: 2px; }
 
       @media (max-width: 720px) {
         .wrap { padding: 0 16px; }
+        .navlinks { display: none; }
+        .foot-grid { grid-template-columns: 1fr; gap: 24px; }
         .hero { padding: 36px 0 32px; }
         .grid { grid-template-columns: minmax(0, 1fr); }
         .panel { padding: 18px; }
@@ -177,16 +221,17 @@
   <body>
     <header class="nav">
       <div class="wrap nav-inner">
-        <a class="brand" href="/" aria-label="Capture the Flag — home">
-          <svg class="pmark" viewBox="125 205 670 747" aria-hidden="true">
-            <g transform="rotate(180, 500, 500) scale(-1, 1) translate(-1000, 0)">
-              <path d="M 676.970 676.855 C 579.388 774.437 420.613 774.439 323.030 676.856 C 312.127 665.954 302.514 654.254 294.048 641.995 L 197.681 641.995 L 197.681 724.133 C 197.681 738.504 186.029 750.156 171.657 750.156 C 157.287 750.156 145.634 738.504 145.634 724.133 L 145.634 94.293 C 145.634 79.919 157.287 68.270 171.657 68.270 C 186.029 68.270 197.681 79.919 197.681 94.293 L 197.681 589.949 L 266.574 589.949 C 232.183 500.423 250.957 394.987 323.030 322.915 C 420.611 225.333 579.387 225.334 676.969 322.916 C 774.552 420.499 774.552 579.273 676.970 676.855 Z" />
-              <path d="M 359.832 640.054 C 437.120 717.341 562.879 717.342 640.168 640.053 C 717.455 562.767 717.455 437.006 640.167 359.719" />
-            </g>
-          </svg>
-          <span class="brand-name">YakRobot</span>
+        <a class="brand" href="/" aria-label="Capture the Flag, YakRobot Protocols — home">
+          <img class="brand-symbol" src="https://yakrobot.com/assets/brand/logo/yakrobot-symbol.png" width="30" height="30" alt="" aria-hidden="true" />
+          <span class="brand-name">YakRobot <b>Protocols</b></span>
+          <span class="brand-tag">Capture the Flag</span>
         </a>
-        <a class="nav-link" href="https://yakrobot.com" rel="noopener">yakrobot.com</a>
+        <nav class="navlinks" aria-label="Primary">
+          <a href="/">Robots</a>
+          <a href="/#board-band">Leaderboard</a>
+          <a href="https://simulator.yakrobot.com/">Simulator</a>
+          <a class="nav-cta" href="https://protocol-institute.org/sigs/drg/" target="_blank" rel="noopener">Join DRG</a>
+        </nav>
       </div>
     </header>
 
@@ -200,6 +245,10 @@
             <span class="badge off" id="badge">Checking…</span>
             <span class="muted" id="state-note"></span>
           </div>
+          <p class="sim-line" id="sim-line" hidden>
+            While you wait, practice in the <a href="https://simulator.yakrobot.com" rel="noopener">simulator →</a>
+            It runs in your browser, no wallet needed.
+          </p>
 
           <div class="panel" id="panel">
             <div id="no-wallet" hidden>
@@ -230,9 +279,40 @@
     </main>
 
     <footer class="site">
-      <div class="wrap row">
-        <span>Robots run by friends of the <a href="https://yakrobot.com" rel="noopener">YakRobot</a> project, when they have time.</span>
-        <span id="contract"></span>
+      <div class="wrap">
+        <div class="foot-grid">
+          <div>
+            <div class="foot-brand">
+              <img src="https://yakrobot.com/assets/brand/logo/yakrobot-symbol.png" width="26" height="26" alt="" aria-hidden="true" />
+              <span class="brand-name">YakRobot <b>Protocols</b></span>
+            </div>
+            <p class="foot-blurb">
+              The open-source protocol stack for decentralized, distributed robotics. A project of the Distributed
+              Robotics Group at the Protocol Institute.
+            </p>
+          </div>
+          <div class="foot-col">
+            <h4>Capture the Flag</h4>
+            <a href="/">All robots</a>
+            <a href="/#board-band">Leaderboard</a>
+            <a href="https://simulator.yakrobot.com/">Simulator</a>
+          </div>
+          <div class="foot-col">
+            <h4>YakRobot</h4>
+            <a href="https://yakrobot.com/">yakrobot.com</a>
+            <a href="https://protocol.yakrobot.com/">Protocol spec</a>
+            <a class="ext" href="https://protocol-institute.org/sigs/drg/" target="_blank" rel="noopener">Protocol Institute</a>
+          </div>
+        </div>
+        <div class="foot-bottom">
+          <span>© 2026 Distributed Robotics Group · Protocol Institute</span>
+          <span>Robots run by friends of the project, when they have time. <span id="contract"></span></span>
+        </div>
+        <p class="foot-note">
+          Brand assets — logos, marks and icons — are from the
+          <a href="https://github.com/pi-drg/yakrobot-protocols-brandkit" target="_blank" rel="noopener">YakRobot Protocols brand kit</a>.
+          © 2026 Protocol Institute. All rights reserved.
+        </p>
       </div>
     </footer>
 
@@ -341,7 +421,7 @@
         else if (s === "busy") {
           badge.className = "badge busy";
           badge.textContent = "Busy until " + clock(state.until);
-          note.textContent = "Someone is driving. Check back then.";
+          note.textContent = "Someone is driving.";
         } else if (s === "paused") {
           badge.className = "badge off"; badge.textContent = "Game paused";
           note.textContent = "Back soon.";
@@ -353,6 +433,7 @@
           note.textContent = "Not running right now. Check back later.";
         }
         $("capture").disabled = busy || s !== "free" || !window.ethereum;
+        $("sim-line").hidden = !s || s === "free";
       }
 
       async function loadStatus() {

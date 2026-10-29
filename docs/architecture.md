@@ -9,7 +9,7 @@ Three parts, run by different people:
 | Part | Where | Run by | Holds |
 |---|---|---|---|
 | `CaptureFlag` contract | Base Sepolia `0xF3F2e69A1b00577d5d6ca1911a3a80132CD08737` (`contracts/`) | the owner wallet | the record of every capture |
-| The Worker | `capture-flag.yakrobot.com` (`worker/`, Cloudflare Workers) | the game owner | the relayer key (gas only), the pages, the switches |
+| The Worker | `capture-flag.yakrobot.com` (`worker/`, Cloudflare Workers) | the game owner | the relayer key (gas only), an optional CDP faucet key, the pages, the switches |
 | A gateway per robot | the friend's fixed hostname (`yakrobot-gateway`, capture-flag mode) | each friend | the robot; **no keys** |
 
 ```mermaid
@@ -94,7 +94,7 @@ One Cloudflare Worker (Hono + viem) with one Durable Object.
   network leaderboard.
 - `/r/:robot`: one robot. Status, previous drivers and the most-rides leader, the
   Capture button, and a saved Drive button for 30 minutes.
-- `/admin`: the owner's switches.
+- `/admin`: the switches and the relayer top-up, behind Cloudflare Access.
 
 **API:**
 
@@ -104,7 +104,8 @@ One Cloudflare Worker (Hono + viem) with one Durable Object.
 | `GET /robots`, `GET /r/:robot/status` | The switches first, then each gateway's `GET /` (3 s timeout). |
 | `GET /r/:robot/drivers`, `GET /leaderboard` | From the relayer's log, plus the on-chain leader and a `names` map. |
 | `GET /r/:robot/capture?player&nonce` | A capture's current transaction (it may have been re-sent), or 404 if it failed. |
-| `GET/POST /admin/state` | The switches; POST takes an owner-signed message. |
+| `GET/POST /admin/state` | Access only. The switches and the relayer's balance; POST takes `{action, target}`. |
+| `POST /admin/topup` | Access only. `TOPUP_CLAIMS` CDP faucet claims for the relayer, once a minute (Base Sepolia only). |
 | `GET /health` | Relayer balance, `relayer() == ours`, unmined sends. 503 when not ok. |
 
 **The Relayer Durable Object** is a single instance named `relayer`, and the only place
@@ -123,10 +124,21 @@ the relayer key is read. It:
   response, so pages never wait for them.
 
 **Configuration** (`wrangler.jsonc`): `CHAIN`, `CONTRACT`, `ROBOTS` (slug →
-`{gateway, robot, label, place}`), `RELAYER_MIN_WEI`, `DRIVERS_SHOWN`, `SENDS_PER_HOUR`.
-Secrets: `RELAYER_PRIVATE_KEY`, `RPC_URL`, and optionally `ENS_RPC_URL` (an Ethereum
-mainnet RPC; player names are off without it). Triggers: a cron every 15 minutes that logs
-when `/health` fails.
+`{gateway, robot, label, place}`), `RELAYER_MIN_WEI`, `DRIVERS_SHOWN`, `SENDS_PER_HOUR`,
+`TOPUP_CLAIMS`. Secrets: `RELAYER_PRIVATE_KEY`, `RPC_URL`, and optionally `ENS_RPC_URL` (an
+Ethereum mainnet RPC; player names are off without it) and `CDP_API_KEY_ID` +
+`CDP_API_KEY_SECRET` (a CDP Secret API Key; the admin top-up is off without it). Access:
+`CF_ACCESS_TEAM_DOMAIN`, `CF_ACCESS_AUD` (public vars). Triggers: a cron every 15 minutes
+that logs when `/health` fails.
+
+**Admin login.** A self-hosted Cloudflare Access application on
+`capture-flag.yakrobot.com/admin*` logs admins in by email. The Worker doesn't trust that
+alone: identity reaches a Worker only as request headers, so it verifies the
+`Cf-Access-Jwt-Assertion` JWT against the team's keys (RS256, `kid`, signature,
+`exp`/`nbf`, `aud`, `iss`) and takes the email from it, 501 while the vars are blank and
+401 otherwise. `workers_dev` and `preview_urls` are off, so the custom domain is the only
+hostname. Admin POSTs must be same-origin JSON, since the Access cookie would ride along
+on a cross-site form. The owner wallet has no part in this: it is for the contract only.
 
 ## The gateway
 
@@ -146,8 +158,9 @@ driver at a time).
 
 | Control | Who | How | Effect |
 |---|---|---|---|
-| Pause / Resume | owner wallet | `/admin`, `personal_sign`, no gas | No new captures anywhere |
-| Disable / Enable a robot | owner wallet | `/admin` | No new captures of that robot |
+| Pause / Resume | an admin (Access email) | `/admin`, no gas | No new captures anywhere |
+| Disable / Enable a robot | an admin | `/admin` | No new captures of that robot |
+| Top up the relayer | an admin | `/admin`, once a minute | `TOPUP_CLAIMS` × 0.0001 ETH from the CDP faucet |
 | Hard stop | owner wallet | `setRelayer(0x0)` on the contract, costs gas | Every `captureBySig` reverts, whatever the Worker does |
 | Take a robot offline | its friend | stop the gateway | Shows offline; captures 409 |
 
@@ -155,12 +168,15 @@ Rides already started always run to the end of their lease: the gateway owns rid
 
 ## Limits and abuse
 
-- **Per IP:** 10 requests a minute on `POST /capture` and `/admin/state` (IPv6 per /64).
+- **Per IP:** 10 requests a minute on `POST /capture`, `/admin/state` and `/admin/topup`
+  (IPv6 per /64).
 - **Per game:** at most `SENDS_PER_HOUR` (60) relayed captures an hour, counting failed
   ones, so many fresh wallets can't drain the relayer.
 - **Per player:** the contract's 10-minute cooldown per robot, and one ride per capture.
 - **The relayer** holds only gas money. If its key leaks, the owner calls
   `setRelayer(<new>)`.
+- **The CDP key** can only claim faucet funds here: the Worker calls nothing else, and
+  it pays only the relayer, at most once a minute. If it leaks, delete it in the CDP portal.
 - Players need only an ordinary wallet account (EOA): no ETH, no gas. Smart-contract
   wallets can't sign captures yet.
 

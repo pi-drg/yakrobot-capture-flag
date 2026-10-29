@@ -12,7 +12,12 @@ const relayer = () => env.RELAYER.get(env.RELAYER.idFromName(RELAYER_NAME));
 beforeAll(() => setGamePaused(false));
 
 describe("per-IP rate limit", () => {
-  it.each(["/capture", "/admin/state"])("allows 10 POST %s a minute from one IP, then 429s", async (path) => {
+  // /admin/state without an Access token is 401, but only after the limiter: it runs first,
+  // so a looping client can't make the Worker fetch Access's keys more than 10 times a minute.
+  it.each([
+    ["/capture", 400],
+    ["/admin/state", 401],
+  ])("allows 10 POST %s a minute from one IP, then 429s", async (path, refused) => {
     const ip = randomIp();
     const codes: number[] = [];
     for (let i = 0; i < 11; i++) {
@@ -24,7 +29,7 @@ describe("per-IP rate limit", () => {
       codes.push(res.status);
       if (res.status === 429) expect(res.headers.get("Retry-After")).toBe("60");
     }
-    expect(codes).toEqual([...Array(10).fill(400), 429]);
+    expect(codes).toEqual([...Array(10).fill(refused), 429]);
 
     // Another IP is unaffected.
     const other = await SELF.fetch(`https://capture-flag.test${path}`, {
@@ -32,7 +37,7 @@ describe("per-IP rate limit", () => {
       headers: { "cf-connecting-ip": randomIp() },
       body: "not json",
     });
-    expect(other.status).toBe(400);
+    expect(other.status).toBe(refused);
   });
 });
 

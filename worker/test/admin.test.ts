@@ -1,56 +1,31 @@
 import { SELF } from "cloudflare:test";
-import { type Hex, toHex } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { describe, expect, it } from "vitest";
 import { robotIdFor } from "../src/config";
 import { CAPTURE_TYPES, DOMAIN_NAME, DOMAIN_VERSION } from "../src/eip712";
-import { ANVIL_CHAIN_ID, CONTRACT_ADDRESS, OWNER_KEY } from "./anvil";
-import { randomIp } from "./game";
-import { setStub, STUB_PORTS, STUB_ROBOT } from "./stub-ports";
+import { ANVIL_CHAIN_ID, CONTRACT_ADDRESS } from "./anvil";
+import { adminHeaders, randomIp } from "./game";
+import { accessToken, setStub, STUB_PORTS, STUB_ROBOT, TEST_ADMIN_EMAIL } from "./stub-ports";
 
 const BASE = "https://capture-flag.test";
 const now = () => Math.floor(Date.now() / 1000);
 
-// Each target needs a strictly newer `issued`, and tests run faster than a second apiece.
-let clock = now() - 100;
-const nextIssued = () => ++clock;
-
-interface Fields {
-  action: string;
-  target: string;
-  chain?: string;
-  contract?: string;
-  issued?: number;
-}
-
-/** Written out here, not with src/admin.ts's adminMessage, to pin the format. */
-function text(f: Fields): string {
-  return [
-    "yakrobot-capture-flag admin",
-    `action: ${f.action}`,
-    `target: ${f.target}`,
-    `chain: ${f.chain ?? ANVIL_CHAIN_ID}`,
-    `contract: ${f.contract ?? CONTRACT_ADDRESS}`,
-    `issued: ${f.issued ?? nextIssued()}`,
-  ].join("\n");
-}
-
-async function post(message: string, key: Hex = OWNER_KEY as Hex, signature?: string) {
-  const sig = signature ?? (await privateKeyToAccount(key).signMessage({ message }));
+async function post(body: unknown, headers?: Record<string, string>) {
   const res = await SELF.fetch(`${BASE}/admin/state`, {
     method: "POST",
-    headers: { "content-type": "application/json", "cf-connecting-ip": randomIp() },
-    body: JSON.stringify({ message, signature: sig }),
+    headers: headers ?? adminHeaders(await accessToken()),
+    body: typeof body === "string" ? body : JSON.stringify(body),
   });
   return { code: res.status, body: (await res.json()) as Record<string, any> };
 }
 
-const act = (action: string, target: string) => post(text({ action, target }));
+const act = (action: string, target: string) => post({ action, target });
 
 async function state() {
-  return (await (await SELF.fetch(`${BASE}/admin/state`)).json()) as {
+  const res = await SELF.fetch(`${BASE}/admin/state`, { headers: adminHeaders(await accessToken()) });
+  return (await res.json()) as {
     paused: boolean;
-    owner: string;
+    admin: { email: string };
     robots: Array<{ slug: string; disabled: boolean }>;
   };
 }
@@ -82,17 +57,20 @@ async function captureCode(slug: keyof typeof STUB_PORTS): Promise<{ code: numbe
 
 // Order matters in this file: the first test sees a fresh deploy.
 describe("admin switches", () => {
-  it("starts paused with every robot enabled, and names the owner", async () => {
+  it("starts paused with every robot enabled, and names the signed-in admin", async () => {
     const s = await state();
     expect(s.paused).toBe(true);
     expect(s.robots.every((r) => !r.disabled)).toBe(true);
-    expect(s.owner).toBe(privateKeyToAccount(OWNER_KEY as Hex).address.toLowerCase());
+    expect(s.admin.email).toBe(TEST_ADMIN_EMAIL);
   });
 
-  it("serves the admin page", async () => {
-    const res = await SELF.fetch(`${BASE}/admin`);
+  it("serves the admin page, with no wallet login", async () => {
+    const res = await SELF.fetch(`${BASE}/admin`, { headers: adminHeaders(await accessToken()) });
     expect(res.status).toBe(200);
-    expect(await res.text()).toContain("it never sends a transaction");
+    const html = await res.text();
+    expect(html).toContain("they never send a transaction");
+    expect(html).not.toContain("Connect wallet");
+    expect(html).not.toContain("personal_sign");
   });
 
   it("while paused: every robot is paused, captures 403, reads still work", async () => {
@@ -103,7 +81,7 @@ describe("admin switches", () => {
     expect((await SELF.fetch(`${BASE}/leaderboard`)).status).toBe(200);
   });
 
-  it("resumes and pauses on the owner's signature", async () => {
+  it("resumes and pauses for a signed-in admin", async () => {
     const resumed = await act("resume", "game");
     expect(resumed.code).toBe(200);
     expect(resumed.body.paused).toBe(false);
@@ -130,37 +108,10 @@ describe("admin switches", () => {
     expect(await status("capture")).not.toBe("disabled");
   });
 
-  it("403s a signature from anyone but the owner, and changes nothing", async () => {
-    const res = await post(text({ action: "pause", target: "game" }), generatePrivateKey());
-    expect(res).toMatchObject({ code: 403, body: { error: "not the owner" } });
+  it("401s a switch without Access, and changes nothing", async () => {
+    const res = await post({ action: "pause", target: "game" }, { "content-type": "application/json", "cf-connecting-ip": randomIp() });
+    expect(res.code).toBe(401);
     expect((await state()).paused).toBe(false);
-  });
-
-  it("400s a stale or future issued", async () => {
-    for (const issued of [now() - 200, now() + 200]) {
-      const res = await post(text({ action: "pause", target: "game", issued }));
-      expect(res.code).toBe(400);
-    }
-    expect((await state()).paused).toBe(false);
-  });
-
-  it("400s a replay of an older (or the same) message after a newer one", async () => {
-    const older = text({ action: "resume", target: "game" });
-    expect((await act("pause", "game")).code).toBe(200);
-    expect(await post(older)).toMatchObject({ code: 400 });
-    expect((await state()).paused).toBe(true);
-
-    const again = text({ action: "resume", target: "game" });
-    expect((await post(again)).code).toBe(200);
-    expect((await post(again)).code).toBe(400);
-  });
-
-  it("keeps issued per target: a robot's switch doesn't block the game's", async () => {
-    const issued = nextIssued();
-    expect((await post(text({ action: "disable", target: "busy", issued }))).code).toBe(200);
-    expect((await post(text({ action: "pause", target: "game", issued }))).code).toBe(200);
-    expect((await act("enable", "busy")).code).toBe(200);
-    expect((await act("resume", "game")).code).toBe(200);
   });
 
   it.each([
@@ -170,39 +121,15 @@ describe("admin switches", () => {
     ["disable an unknown robot", { action: "disable", target: "nope" }],
     ["disable by gateway robot name", { action: "disable", target: STUB_ROBOT }],
     ["an unknown action", { action: "delete", target: "game" }],
-    ["the wrong chain", { action: "pause", target: "game", chain: "8453" }],
-    ["the wrong contract", { action: "pause", target: "game", contract: `0x${"11".repeat(20)}` }],
-  ])("400s %s", async (_, fields) => {
-    expect((await post(text(fields))).code).toBe(400);
+    ["topup sent to /admin/state", { action: "topup", target: "relayer" }],
+    ["a missing target", { action: "pause" }],
+    ["an array", ["pause", "game"]],
+  ])("400s %s", async (_, body) => {
+    expect((await post(body)).code).toBe(400);
   });
 
-  it("accepts a signature over the UTF-8 hex, as admin.html's personal_sign sends it", async () => {
-    const message = text({ action: "pause", target: "game" });
-    const signature = await privateKeyToAccount(OWNER_KEY as Hex).signMessage({ message: { raw: toHex(message) } });
-    expect((await post(message, undefined, signature)).code).toBe(200);
-    expect((await act("resume", "game")).code).toBe(200);
-  });
-
-  it("accepts the contract address in any case", async () => {
-    const res = await post(text({ action: "pause", target: "game", contract: CONTRACT_ADDRESS.toLowerCase() }));
-    expect(res.code).toBe(200);
-    expect((await act("resume", "game")).code).toBe(200);
-  });
-
-  it.each([
-    ["an extra line", (m: string) => m + "\nextra: 1"],
-    ["a missing line", (m: string) => m.split("\n").slice(0, -1).join("\n")],
-    ["a wrong header", (m: string) => m.replace("admin", "Admin")],
-    ["CRLF line ends", (m: string) => m.replace(/\n/g, "\r\n")],
-    ["a padded value", (m: string) => m.replace("action: pause", "action:  pause")],
-  ])("400s a message with %s", async (_, mangle) => {
-    expect((await post(mangle(text({ action: "pause", target: "game" })))).code).toBe(400);
-  });
-
-  it("400s a malformed signature or body", async () => {
-    expect((await post(text({ action: "pause", target: "game" }), undefined, "0x1234"))).toMatchObject({ code: 400 });
-    const res = await SELF.fetch(`${BASE}/admin/state`, { method: "POST", body: "not json" });
-    expect(res.status).toBe(400);
+  it("400s a body that isn't JSON", async () => {
+    expect((await post("not json")).code).toBe(400);
     expect((await state()).paused).toBe(false);
   });
 });

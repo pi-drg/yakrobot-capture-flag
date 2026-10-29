@@ -56,6 +56,8 @@ const STUCK_BLOCKS = 10n;
  * /health to report. */
 const MAX_RESENDS = 3;
 const ALARM_MS = 30_000;
+/** Seconds between faucet top-ups (claimTopup). */
+export const TOPUP_GAP_S = 60;
 
 type PendingRow = {
   nonce: number;
@@ -126,22 +128,19 @@ export class Relayer extends DurableObject<Env> {
     };
   }
 
-  /** `target` is "game" (pause) or a robot slug (disable). Unchecked: tests use it
-   * directly; the admin route goes through `applySwitch`. */
+  /** `target` is "game" (pause) or a robot slug (disable). Unchecked: the admin route has
+   * checked the command (and Access the admin) first. */
   setSwitch(target: string, on: boolean): void {
     const key = target === "game" ? "paused" : `disabled:${target}`;
     this.sql.exec("INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)", key, on ? "1" : "0");
   }
 
-  /** The admin route's switch, after it has checked the owner's signature. `issued` must
-   * be newer than the last one applied to this target, so an old "resume" can't be
-   * replayed after a "pause". False if it isn't. */
-  applySwitch(target: string, on: boolean, issued: number): boolean {
-    const key = `issued:${target}`;
-    const row = this.sql.exec<{ value: string }>("SELECT value FROM kv WHERE key = ?", key).toArray()[0];
-    if (row && issued <= Number(row.value)) return false;
-    this.sql.exec("INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)", key, String(issued));
-    this.setSwitch(target, on);
+  /** One faucet top-up a minute, across every admin: a double click or a retried request
+   * can't spend two batches. False if one ran in the last TOPUP_GAP_S. */
+  claimTopup(nowSeconds: number): boolean {
+    const row = this.sql.exec<{ value: string }>("SELECT value FROM kv WHERE key = 'topup_at'").toArray()[0];
+    if (row && nowSeconds - Number(row.value) < TOPUP_GAP_S) return false;
+    this.sql.exec("INSERT OR REPLACE INTO kv (key, value) VALUES ('topup_at', ?)", String(nowSeconds));
     return true;
   }
 

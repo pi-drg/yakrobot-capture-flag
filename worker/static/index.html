@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Capture the Flag · YakRobot</title>
-    <meta name="description" content="Drive a real robot somewhere in the world for five minutes. Capture its flag on-chain, free, and the robot is yours to drive." />
+    <meta name="description" content="Drive a robot at game centers in India, Berlin and Seattle. Capture its flag with one free signature and it's yours for five minutes." />
     <meta name="theme-color" content="#0064ff" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -78,12 +78,31 @@
         border-bottom: 1px solid var(--hairline);
       }
       .nav-inner { height: 64px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-      .brand { display: flex; align-items: center; gap: 11px; }
-      .pmark { width: 24px; height: 27px; flex: none; color: var(--primary); }
-      .pmark path { stroke: currentColor; stroke-width: 46; fill: none; stroke-linecap: round; stroke-linejoin: round; }
-      .brand-name { font-family: var(--font-serif); font-size: 21px; line-height: 1; }
-      .nav-link { font-family: var(--font-sans); font-size: 14px; padding: 8px 12px; border-radius: 6px; }
-      .nav-link:hover { color: var(--primary); }
+      .brand { display: flex; align-items: center; gap: 11px; color: var(--ink-dark); }
+      .brand .brand-symbol { width: 30px; height: 30px; flex: none; }
+      .brand-name { font-family: var(--font-serif); font-size: 21px; line-height: 1; letter-spacing: -0.01em; }
+      .brand-name b { font-weight: 400; }
+      .brand-tag {
+        margin-left: 4px;
+        padding: 3px 9px;
+        border-radius: var(--radius-pill);
+        background: var(--primary-light-bg);
+        color: var(--primary);
+        font: 500 12px var(--font-sans);
+        white-space: nowrap;
+      }
+      .navlinks { display: flex; align-items: center; gap: 4px; }
+      .navlinks a {
+        font-family: var(--font-sans);
+        font-size: 14px;
+        color: var(--ink-dark);
+        padding: 8px 12px;
+        border-radius: 6px;
+        transition: color 0.15s ease;
+      }
+      .navlinks a:hover { color: var(--primary); }
+      .navlinks a.nav-cta { margin-left: 6px; padding: 8px 16px; background: var(--ink-dark); color: #fff; border-radius: var(--radius-md); }
+      .navlinks a.nav-cta:hover { background: #000; color: #fff; }
 
       /* hero */
       .hero { padding: 72px 0 56px; border-bottom: 1px solid var(--hairline-soft); }
@@ -124,6 +143,27 @@
         font-family: var(--font-sans);
         font-size: 15px;
       }
+
+      /* simulator callout, shown when no robot is free */
+      .sim {
+        margin-top: 14px;
+        padding: 14px 18px;
+        border: 1px solid var(--primary);
+        background: var(--primary-light-bg);
+        border-radius: var(--radius-md);
+        font-family: var(--font-sans);
+        font-size: 15px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px 20px;
+        flex-wrap: wrap;
+      }
+      .sim[hidden] { display: none; }
+      .sim-title { font-weight: 600; margin-right: 4px; }
+      .sim-go { color: var(--primary); font-weight: 500; white-space: nowrap; }
+      .sim-go .a { display: inline-block; transition: transform 0.15s ease; }
+      .sim:hover .sim-go .a { transform: translateX(3px); }
 
       /* sections */
       section.band { padding: 56px 0; }
@@ -184,14 +224,36 @@
       .board tr.first td { background: var(--primary-light-bg); }
       .board a:hover { color: var(--primary); }
       .empty { padding: 22px 18px; }
+      .board-note { font-family: var(--font-sans); font-size: 14px; color: var(--ink-secondary); max-width: 68ch; margin: -8px 0 18px; }
 
-      footer.site { border-top: 1px solid var(--hairline); padding: 32px 0 48px; }
-      footer .row { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-family: var(--font-sans); font-size: 13px; color: var(--ink-secondary); }
-      footer a { text-decoration: underline; text-underline-offset: 2px; }
-      footer a:hover { color: var(--primary); }
+      footer.site { background: var(--surface-white); border-top: 1px solid var(--hairline); }
+      .foot-grid { display: grid; grid-template-columns: 1.5fr 1fr 1fr; gap: 36px; padding: 56px 0 36px; }
+      .foot-brand { display: flex; align-items: center; gap: 11px; margin-bottom: 14px; }
+      .foot-brand img { width: 26px; height: 26px; }
+      .foot-blurb { font-size: 14.5px; line-height: 1.6; color: var(--ink-secondary); max-width: 36ch; margin: 0; }
+      .foot-col h4 { font-family: var(--font-sans); font-size: 12px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-secondary); margin: 0 0 14px; }
+      .foot-col a { display: block; font-family: var(--font-sans); font-size: 14px; color: var(--ink-secondary); padding: 5px 0; }
+      .foot-col a:hover { color: var(--primary); }
+      .ext::after { content: " ↗"; }
+      .foot-bottom {
+        border-top: 1px solid var(--hairline-soft);
+        padding: 22px 0 14px;
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        flex-wrap: wrap;
+        font: 13px var(--font-sans);
+        color: var(--ink-secondary);
+      }
+      .foot-bottom a { text-decoration: underline; text-underline-offset: 2px; }
+      .foot-bottom a:hover { color: var(--primary); }
+      .foot-note { margin: 0; padding: 0 0 40px; font: 12px/1.5 var(--font-sans); color: var(--ink-secondary); opacity: 0.85; }
+      .foot-note a { text-decoration: underline; text-underline-offset: 2px; }
 
       @media (max-width: 600px) {
         .wrap { padding: 0 16px; }
+        .navlinks { display: none; }
+        .foot-grid { grid-template-columns: 1fr; gap: 24px; }
         .hero { padding: 48px 0 40px; }
         .board th, .board td { padding: 10px 12px; }
         .board .robots-col { display: none; }
@@ -201,16 +263,17 @@
   <body>
     <header class="nav">
       <div class="wrap nav-inner">
-        <a class="brand" href="/" aria-label="Capture the Flag — home">
-          <svg class="pmark" viewBox="125 205 670 747" aria-hidden="true">
-            <g transform="rotate(180, 500, 500) scale(-1, 1) translate(-1000, 0)">
-              <path d="M 676.970 676.855 C 579.388 774.437 420.613 774.439 323.030 676.856 C 312.127 665.954 302.514 654.254 294.048 641.995 L 197.681 641.995 L 197.681 724.133 C 197.681 738.504 186.029 750.156 171.657 750.156 C 157.287 750.156 145.634 738.504 145.634 724.133 L 145.634 94.293 C 145.634 79.919 157.287 68.270 171.657 68.270 C 186.029 68.270 197.681 79.919 197.681 94.293 L 197.681 589.949 L 266.574 589.949 C 232.183 500.423 250.957 394.987 323.030 322.915 C 420.611 225.333 579.387 225.334 676.969 322.916 C 774.552 420.499 774.552 579.273 676.970 676.855 Z" />
-              <path d="M 359.832 640.054 C 437.120 717.341 562.879 717.342 640.168 640.053 C 717.455 562.767 717.455 437.006 640.167 359.719" />
-            </g>
-          </svg>
-          <span class="brand-name">YakRobot</span>
+        <a class="brand" href="/" aria-label="Capture the Flag, YakRobot Protocols — home">
+          <img class="brand-symbol" src="https://yakrobot.com/assets/brand/logo/yakrobot-symbol.png" width="30" height="30" alt="" aria-hidden="true" />
+          <span class="brand-name">YakRobot <b>Protocols</b></span>
+          <span class="brand-tag">Capture the Flag</span>
         </a>
-        <a class="nav-link" href="https://yakrobot.com" rel="noopener">yakrobot.com</a>
+        <nav class="navlinks" aria-label="Primary">
+          <a href="/">Robots</a>
+          <a href="/#board-band">Leaderboard</a>
+          <a href="https://simulator.yakrobot.com/">Simulator</a>
+          <a class="nav-cta" href="https://protocol-institute.org/sigs/drg/" target="_blank" rel="noopener">Join DRG</a>
+        </nav>
       </div>
     </header>
 
@@ -219,11 +282,10 @@
         <div class="wrap">
           <p class="eyebrow">A YakRobot game · Base Sepolia test network</p>
           <h1>Capture the Flag</h1>
-          <p class="tagline">Drive a real robot, anywhere in the world.</p>
+          <p class="tagline">Drive a robot at game centers in India, Berlin and Seattle.</p>
           <p class="lead">
             Pick a robot that's free, capture its flag with one free signature from your wallet,
-            and it's yours to drive for five minutes. Every capture is recorded on-chain; nothing
-            is bought, sold or sent to you.
+            and it's yours to drive for five minutes.
           </p>
           <ul class="steps">
             <li><span class="dot blue"></span>Pick a free robot</li>
@@ -233,6 +295,13 @@
           <div class="notice" id="paused" hidden>
             The game is paused for a moment, back soon. The leaderboard is still below.
           </div>
+          <a class="sim" id="sim" href="https://simulator.yakrobot.com" rel="noopener" hidden>
+            <span>
+              <span class="sim-title" id="sim-title">Every robot is taken right now.</span>
+              Practice driving a simulated rover while you wait. It runs in your browser, no wallet needed.
+            </span>
+            <span class="sim-go">Open the simulator <span class="a">→</span></span>
+          </a>
         </div>
       </section>
 
@@ -257,15 +326,51 @@
               <h2>Leaderboard</h2>
             </div>
           </div>
+          <p class="board-note">
+            Every capture counts as one ride. Drivers are ranked by rides across all robots; on a
+            tie, whoever got there first stays ahead. You can capture the same robot again after
+            10 minutes, or a different one straight away. The top 50 are shown.
+          </p>
           <div class="board" id="board"><p class="muted empty">Loading…</p></div>
         </div>
       </section>
     </main>
 
     <footer class="site">
-      <div class="wrap row">
-        <span>Robots run by friends of the <a href="https://yakrobot.com" rel="noopener">YakRobot</a> project, when they have time.</span>
-        <span id="contract"></span>
+      <div class="wrap">
+        <div class="foot-grid">
+          <div>
+            <div class="foot-brand">
+              <img src="https://yakrobot.com/assets/brand/logo/yakrobot-symbol.png" width="26" height="26" alt="" aria-hidden="true" />
+              <span class="brand-name">YakRobot <b>Protocols</b></span>
+            </div>
+            <p class="foot-blurb">
+              The open-source protocol stack for decentralized, distributed robotics. A project of the Distributed
+              Robotics Group at the Protocol Institute.
+            </p>
+          </div>
+          <div class="foot-col">
+            <h4>Capture the Flag</h4>
+            <a href="/">All robots</a>
+            <a href="/#board-band">Leaderboard</a>
+            <a href="https://simulator.yakrobot.com/">Simulator</a>
+          </div>
+          <div class="foot-col">
+            <h4>YakRobot</h4>
+            <a href="https://yakrobot.com/">yakrobot.com</a>
+            <a href="https://protocol.yakrobot.com/">Protocol spec</a>
+            <a class="ext" href="https://protocol-institute.org/sigs/drg/" target="_blank" rel="noopener">Protocol Institute</a>
+          </div>
+        </div>
+        <div class="foot-bottom">
+          <span>© 2026 Distributed Robotics Group · Protocol Institute</span>
+          <span>Robots run by friends of the project, when they have time. <span id="contract"></span></span>
+        </div>
+        <p class="foot-note">
+          Brand assets — logos, marks and icons — are from the
+          <a href="https://github.com/pi-drg/yakrobot-protocols-brandkit" target="_blank" rel="noopener">YakRobot Protocols brand kit</a>.
+          © 2026 Protocol Institute. All rights reserved.
+        </p>
       </div>
     </footer>
 
@@ -333,6 +438,12 @@
           var data = await res.json();
           document.getElementById("paused").hidden = !data.paused;
           document.getElementById("robots-band").hidden = !!data.paused;
+          var anyFree = data.robots.some(function (r) { return r.state === "free"; });
+          var anyBusy = data.robots.some(function (r) { return r.state === "busy"; });
+          document.getElementById("sim").hidden = anyFree;
+          document.getElementById("sim-title").textContent = data.paused
+            ? "Can't wait?"
+            : anyBusy ? "Every robot is taken right now." : "No robot is running right now.";
           var robots = data.robots.slice().sort(function (a, b) {
             return (ORDER[a.state] ?? 9) - (ORDER[b.state] ?? 9);
           });

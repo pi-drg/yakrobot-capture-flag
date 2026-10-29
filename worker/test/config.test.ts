@@ -26,6 +26,7 @@ function env(overrides: RawEnv = {}): RawEnv {
     RELAYER_MIN_WEI: "1000000000000000",
     DRIVERS_SHOWN: "50",
     SENDS_PER_HOUR: "60",
+    TOPUP_CLAIMS: "10",
     ...overrides,
   };
 }
@@ -134,6 +135,7 @@ describe("loadConfig", () => {
     ["a negative RELAYER_MIN_WEI", { RELAYER_MIN_WEI: "-1" }],
     ["DRIVERS_SHOWN of zero", { DRIVERS_SHOWN: "0" }],
     ["SENDS_PER_HOUR of zero", { SENDS_PER_HOUR: "0" }],
+    ["TOPUP_CLAIMS above the cap", { TOPUP_CLAIMS: "21" }],
   ])("rejects %s", (_, overrides) => {
     expect(() => loadConfig(env(overrides))).toThrow(ConfigError);
   });

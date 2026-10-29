@@ -23,7 +23,7 @@ interface Fields {
   issued?: number;
 }
 
-/** Written out here, not with src/admin.ts's adminMessage, to pin the format (design W7). */
+/** Written out here, not with src/admin.ts's adminMessage, to pin the format. */
 function text(f: Fields): string {
   return [
     "yakrobot-capture-flag admin",
@@ -81,7 +81,7 @@ async function captureCode(slug: keyof typeof STUB_PORTS): Promise<{ code: numbe
 }
 
 // Order matters in this file: the first test sees a fresh deploy.
-describe("admin switches (design W7)", () => {
+describe("admin switches", () => {
   it("starts paused with every robot enabled, and names the owner", async () => {
     const s = await state();
     expect(s.paused).toBe(true);

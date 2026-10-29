@@ -13,21 +13,21 @@
 	// Cloudflare creates the DNS record and certificate. Needs a deploy token with access to
 	// the yakrobot.com zone.
 	"routes": [{ "pattern": "capture-flag.yakrobot.com", "custom_domain": true }],
-	// Pages are single-file HTML imported as strings (design W5).
+	// Pages are single-file HTML imported as strings.
 	"rules": [{ "type": "Text", "globs": ["**/*.html"], "fallthrough": false }],
-	// Public constants only (design W1). RELAYER_PRIVATE_KEY and RPC_URL are `wrangler secret put` in
+	// Public constants only. RELAYER_PRIVATE_KEY and RPC_URL are `wrangler secret put` in
 	// production and `.dev.vars` (gitignored) locally — never here.
 	"vars": {
-		// Base Sepolia for the pilot; Base mainnet (8453) after the legal check (F6).
+		// Base Sepolia for the pilot; Base mainnet (8453) after the legal check.
 		"CHAIN": "84532",
 		// RPC_URL is a Worker secret, not a var, as in payments: a provider URL can embed an
 		// API key, and payments found mainnet.base.org rate-limits Worker egress
 		// (2026-09-16). See .dev.vars.example.
-		// CaptureFlag on Base Sepolia, deployed 2026-10-25 (F2).
+		// CaptureFlag on Base Sepolia, deployed 2026-10-25.
 		"CONTRACT": "0xF3F2e69A1b00577d5d6ca1911a3a80132CD08737",
 		// {"<slug>": {"gateway": "https://<fixed host>", "robot": "picar_freenove", "label": "…",
-		// "place": "Berlin"}} (W1). The slug is ours (/r/berlin); "robot" is the gateway's robot
-		// name. robot_id is derived as keccak256(host + "/" + robot) (F3), so the gateway host
+		// "place": "Berlin"}}. The slug is ours (/r/berlin); "robot" is the gateway's robot
+		// name. robot_id is derived as keccak256(host + "/" + robot), so the gateway host
 		// must never change. Empty until each friend's gateway has a fixed hostname.
 		"ROBOTS": "{}",
 		// /health and the cron flag the relayer below this balance (0.001 ETH).
@@ -37,13 +37,13 @@
 		// of fresh wallets can't drain the relayer. Three robots at 5-min rides is 36/h.
 		"SENDS_PER_HOUR": "60"
 	},
-	// design W6: 10 captures (and admin posts) a minute per IP. namespace_id is any number
+	// 10 captures (and admin posts) a minute per IP. namespace_id is any number
 	// unique to this account.
 	"ratelimits": [{ "name": "IP_LIMIT", "namespace_id": "1001", "simple": { "limit": 10, "period": 60 } }],
-	// design W6: check the relayer's balance and the contract's relayer every 15 minutes.
+	// Check the relayer's balance and the contract's relayer every 15 minutes.
 	"triggers": { "crons": ["*/15 * * * *"] },
 	// One named instance holds the relayer key, the nonce, the drivers log and the game
-	// switches (design W4, W5a, W7).
+	// switches.
 	"durable_objects": {
 		"bindings": [{ "name": "RELAYER", "class_name": "Relayer" }]
 	},

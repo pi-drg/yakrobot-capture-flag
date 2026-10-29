@@ -1,8 +1,8 @@
 import { keccak256, toBytes } from "viem";
 
 /**
- * Read and validate the Worker's configuration — design W1. Each robot's `robotId` is
- * derived here from its gateway host and robot name (design F3), so a friend running a
+ * Read and validate the Worker's configuration. Each robot's `robotId` is
+ * derived here from its gateway host and robot name, so a friend running a
  * robot only hands over a host and a name, and no hand-typed id can be wrong.
  *
  * `ROBOTS` is keyed by a slug of our own (`berlin`), not by the gateway's robot name:
@@ -59,7 +59,7 @@ function validatePositiveInt(name: string, value: string): number {
   return Number(value);
 }
 
-/** `keccak256(host + "/" + robot)` — design F3; `host` is lowercase and keeps any port. */
+/** `keccak256(host + "/" + robot)`; `host` is lowercase and keeps any port. */
 export function robotIdFor(host: string, robot: string): `0x${string}` {
   return keccak256(toBytes(`${host}/${robot}`));
 }
@@ -112,7 +112,7 @@ function parseRobots(value: string): Robot[] {
     if (!SLUG_RE.test(slug)) {
       throw new ConfigError(`ROBOTS key ${JSON.stringify(slug)} must match ${SLUG_RE}`);
     }
-    // The admin message's game-wide target (design W7).
+    // The admin message's game-wide target.
     if (slug === "game") throw new ConfigError('ROBOTS key "game" is reserved');
     const at = `ROBOTS.${slug}`;
     if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
@@ -144,7 +144,7 @@ function parseRobots(value: string): Robot[] {
   return robots;
 }
 
-/** Validate every W1 var and assemble the `Config`, or throw `ConfigError` naming the
+/** Validate every var and assemble the `Config`, or throw `ConfigError` naming the
  * first problem found. Secrets (`RELAYER_PRIVATE_KEY`, `RPC_URL`) are read where used. */
 export function loadConfig(env: RawEnv): Config {
   const chainId = validatePositiveInt("CHAIN", requireVar(env, "CHAIN"));

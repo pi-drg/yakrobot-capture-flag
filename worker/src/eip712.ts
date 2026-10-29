@@ -1,7 +1,7 @@
 import { isAddress, isHex, recoverTypedDataAddress } from "viem";
 
 /**
- * The EIP-712 `Capture` the player signs (design F2), shaped as `eth_signTypedData_v4`
+ * The EIP-712 `Capture` the player signs, shaped as `eth_signTypedData_v4`
  * takes it. The same object is posted to `/capture` and later handed to the gateway, so
  * it travels whole rather than as loose fields. `contracts/test/vectors.json` pins the
  * hashing shared with the contract and the gateway.

@@ -7,7 +7,7 @@
     "postinstall": "wrangler types",
     "dev": "wrangler dev",
     "test": "vitest run",
-    "deploy": "echo 'user deploys (execution plan W3) — this script intentionally does not run wrangler deploy'"
+    "deploy": "echo 'the user deploys by hand — this script intentionally does not run wrangler deploy'"
   },
   "dependencies": {
     "hono": "4.13.7",

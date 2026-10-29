@@ -325,7 +325,7 @@
         return "0x" + Array.from(new TextEncoder().encode(text), function (b) { return b.toString(16).padStart(2, "0"); }).join("");
       }
 
-      // Must match the Worker's adminMessage() exactly (design W7).
+      // Must match the Worker's adminMessage() exactly.
       function message(action, target) {
         return [
           "yakrobot-capture-flag admin",

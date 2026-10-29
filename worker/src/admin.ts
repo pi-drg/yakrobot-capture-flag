@@ -3,7 +3,7 @@ import { captureFlagAbi } from "./abi";
 import { type Config, findRobot } from "./config";
 
 /**
- * The owner's game switches — design W7. The owner wallet `personal_sign`s a short text
+ * The owner's game switches. The owner wallet `personal_sign`s a short text
  * message; there is no admin secret, and nothing here sends a transaction.
  *
  *   yakrobot-capture-flag admin

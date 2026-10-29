@@ -17,10 +17,10 @@ export { Relayer } from "./relayer";
 
 const app = new Hono<{ Bindings: Env; Variables: { config: Config } }>();
 
-/** design G3: how long after a capture its ride can still start, the gateway's default. */
+/** How long after a capture its ride can still start, the gateway's default. */
 const VALID_MINUTES = 30;
 
-/** design W3 step 2: a signature may not be good for more than 10 minutes. */
+/** A signature may not be good for more than 10 minutes. */
 const MAX_DEADLINE_AHEAD = 600n;
 /** ...and must have a minute left, so it can't expire while its transaction is pending. */
 const MIN_DEADLINE_LEFT = 60n;
@@ -42,7 +42,7 @@ app.use("*", async (c, next) => {
   await next();
 });
 
-/** design W6: 10 a minute per IP, before any gateway, RPC or relayer call. Cloudflare
+/** 10 a minute per IP, before any gateway, RPC or relayer call. Cloudflare
  * always sets CF-Connecting-IP in production; without it (local dev), all share one key. */
 for (const path of ["/capture", "/admin/state"]) {
   app.post(path, async (c, next) => {
@@ -62,7 +62,7 @@ function relayer(env: Env) {
 
 type RobotState = GatewayState | { state: "paused" } | { state: "disabled" };
 
-/** Paused and disabled are ours and checked first; only then is the gateway asked (W5b). */
+/** Paused and disabled are ours and checked first; only then is the gateway asked. */
 async function robotState(robot: Robot, switches: { paused: boolean; disabled: string[] }): Promise<RobotState> {
   if (switches.paused) return { state: "paused" };
   if (switches.disabled.includes(robot.slug)) return { state: "disabled" };
@@ -92,7 +92,7 @@ app.get("/r/:robot", (c) => {
 
 app.get("/admin", (c) => c.html(adminPage));
 
-/** What the admin page shows: the switches and each robot's counts (design W7). */
+/** What the admin page shows: the switches and each robot's counts. */
 async function adminState(env: Env, config: Config) {
   const stub = relayer(env);
   const [switches, totals] = await Promise.all([stub.switches(), stub.robotTotals()]);
@@ -122,7 +122,7 @@ app.get("/admin/state", async (c) => {
   return c.json({ ...(await adminState(c.env, config)), owner });
 });
 
-/** design W7: parse, check the time, check the owner's signature, then switch. */
+/** Parse, check the time, check the owner's signature, then switch. */
 app.post("/admin/state", async (c) => {
   const config = c.get("config");
   let body: { message?: unknown; signature?: unknown };
@@ -150,13 +150,13 @@ app.post("/admin/state", async (c) => {
   return c.json(await adminState(c.env, config));
 });
 
-/** design W6: 503 when the relayer can't pay gas or the contract no longer accepts it. */
+/** 503 when the relayer can't pay gas or the contract no longer accepts it. */
 app.get("/health", async (c) => {
   const health = await checkHealth(c.env, c.get("config"), relayer(c.env));
   return c.json(health, health.ok ? 200 : 503);
 });
 
-/** Every robot's state for the index page, gateways asked in parallel (design W5b). */
+/** Every robot's state for the index page, gateways asked in parallel. */
 app.get("/robots", async (c) => {
   const { robots } = c.get("config");
   const switches = await relayer(c.env).switches();
@@ -216,7 +216,7 @@ app.get("/leaderboard", async (c) => {
   });
 });
 
-/** design W3: every check that costs no gas runs here, in order, before the relayer. */
+/** Every check that costs no gas runs here, in order, before the relayer. */
 app.post("/capture", async (c) => {
   const config = c.get("config");
   const fail = (status: 400 | 403 | 409 | 429 | 503, error: string, extra: object = {}) =>
@@ -272,7 +272,7 @@ app.post("/capture", async (c) => {
   if (signer !== message.player) return fail(400, "bad signature");
 
   // 4. The robot must be free right now. Racy, and that's fine: a capture stays usable
-  // at the gateway for VALID_MINUTES (design G3).
+  // at the gateway for VALID_MINUTES.
   const state = await readGatewayState(robot);
   if (state.state !== "free") {
     return fail(409, "robot busy or offline — your capture was not used", { state: state.state });
@@ -301,12 +301,12 @@ app.post("/capture", async (c) => {
   return c.json({
     txHash: result.txHash,
     robot: robot.slug,
-    // The page appends #c=&s=&tx= (design W5).
+    // The page appends #c=&s=&k=&tx=.
     drive: `${robot.gateway}/${robot.name}/ui`,
   });
 });
 
-/** design W6: every 15 minutes, flag an unhealthy relayer in the Worker's logs. */
+/** Every 15 minutes, flag an unhealthy relayer in the Worker's logs. */
 async function scheduled(_controller: ScheduledController, env: Env): Promise<void> {
   const health = await checkHealth(env, configOf(env), relayer(env), { fresh: true });
   if (!health.ok) console.error("capture-flag unhealthy", JSON.stringify(health));

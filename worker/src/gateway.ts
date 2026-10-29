@@ -1,11 +1,11 @@
 import type { Robot } from "./config";
 
 /**
- * A robot's state as the claim and index pages show it — design W5b. Read from the
+ * A robot's state as the claim and index pages show it. Read from the
  * robot's gateway `GET /`, which is unauthenticated and the same index payments reads.
  * The Worker asks on the page's behalf because the gateway is another origin.
  *
- * `paused` and `disabled` (design W7) are decided by the Worker before any gateway is
+ * `paused` and `disabled` are decided by the Worker before any gateway is
  * called, so they never come from here.
  */
 export type GatewayState =
@@ -14,7 +14,7 @@ export type GatewayState =
   | { state: "offline"; reason: string }
   | { state: "unreachable" };
 
-/** Design W5b: a gateway that hasn't answered in 3 s counts as unreachable. */
+/** A gateway that hasn't answered in 3 s counts as unreachable. */
 export const GATEWAY_TIMEOUT_MS = 3000;
 
 type Json = Record<string, unknown>;
@@ -32,8 +32,8 @@ export function stateFromIndex(index: unknown, robot: string, now: number): Gate
   if (!isObject(index) || !isObject(index.robots)) {
     return { state: "offline", reason: "gateway index has no robots" };
   }
-  // A gateway not in capture-flag mode hands out rides without checking a capture
-  // (design G1), so relaying one there would spend gas for nothing.
+  // A gateway not in capture-flag mode hands out rides without checking a capture,
+  // so relaying one there would spend gas for nothing.
   if (!isObject(index.teleop) || index.teleop.reservation !== "capture_flag") {
     return { state: "offline", reason: "gateway is not in capture-flag mode" };
   }

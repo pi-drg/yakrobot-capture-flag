@@ -66,7 +66,7 @@ async function current(message: { player: string; nonce: bigint }) {
 beforeAll(() => setGamePaused(false));
 afterEach(() => anvilRpc("evm_setAutomine", [true]));
 
-describe("stuck transactions (design W4)", () => {
+describe("stuck transactions", () => {
   it("leaves a fresh send alone, then settles it once mined", async () => {
     const { message, sig } = await signed(300);
     const result = await relayer().capture("status", message, sig, 600);

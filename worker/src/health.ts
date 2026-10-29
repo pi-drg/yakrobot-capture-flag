@@ -3,12 +3,12 @@ import { publicClientFor, rpcUrlOf } from "./chain";
 import type { Config } from "./config";
 
 /**
- * `GET /health` and the 15-minute cron — design W6. `balance_ok` (can the relayer pay
+ * `GET /health` and the 15-minute cron. `balance_ok` (can the relayer pay
  * gas?) and `relayer_set` (does the contract still accept our relayer, or did the owner
- * hard-stop it, F8?) are reported apart, so "out of gas" and "stopped" look different.
+ * hard-stop it?) are reported apart, so "out of gas" and "stopped" look different.
  * A send unmined for STUCK_S is unhealthy too: the alarm has given up or is failing, and
  * every later capture queues behind its nonce.
- * Paused is reported but isn't unhealthy: it's the owner's choice (W7).
+ * Paused is reported but isn't unhealthy: it's the owner's choice.
  */
 
 const STUCK_S = 300;

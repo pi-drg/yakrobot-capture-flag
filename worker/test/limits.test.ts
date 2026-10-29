@@ -11,7 +11,7 @@ const relayer = () => env.RELAYER.get(env.RELAYER.idFromName(RELAYER_NAME));
 
 beforeAll(() => setGamePaused(false));
 
-describe("per-IP rate limit (design W6)", () => {
+describe("per-IP rate limit", () => {
   it.each(["/capture", "/admin/state"])("allows 10 POST %s a minute from one IP, then 429s", async (path) => {
     const ip = randomIp();
     const codes: number[] = [];
@@ -64,7 +64,7 @@ describe("ipKey", () => {
   });
 });
 
-describe("hourly send budget (design W6)", () => {
+describe("hourly send budget", () => {
   it("refuses with 503 and no send once SENDS_PER_HOUR captures are logged", async () => {
     const robotId = robotIdFor(`127.0.0.1:${STUB_PORTS.status}`, STUB_ROBOT);
     const now = Math.floor(Date.now() / 1000);

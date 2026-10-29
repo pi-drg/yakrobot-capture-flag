@@ -17,11 +17,11 @@ import { type Config, loadConfig } from "./config";
 import type { Capture } from "./eip712";
 
 /**
- * The Relayer Durable Object — design W4. One named instance ("relayer") is the only
+ * The Relayer Durable Object. One named instance ("relayer") is the only
  * holder of RELAYER_PRIVATE_KEY and the only submitter of `captureBySig`, so it can:
  * - keep the relayer's transaction nonce in order when many visitors capture at once;
- * - keep the drivers log and counts (design W5a), complete because of `onlyRelayer`;
- * - hold the game switches (design W7): paused, and disabled per robot.
+ * - keep the drivers log and counts, complete because of `onlyRelayer`;
+ * - hold the game switches: paused, and disabled per robot.
  *
  * The log is written when a transaction is sent, not when it's mined. Simulation and the
  * in-flight cooldown check below make a later revert rare (a deadline passing while
@@ -50,7 +50,7 @@ export interface Ranked {
 }
 
 const PRIVATE_KEY_RE = /^0x[0-9a-fA-F]{64}$/;
-/** design W4: re-send after this many blocks unmined (about 20 s on Base)... */
+/** Re-send after this many blocks unmined (about 20 s on Base)... */
 const STUCK_BLOCKS = 10n;
 /** ...with fees up 25%, at most this many times, then give up, log it and leave it for
  * /health to report. */
@@ -112,7 +112,7 @@ export class Relayer extends DurableObject<Env> {
     `);
   }
 
-  // ---- switches (design W7) ----
+  // ---- switches ----
 
   /** The game starts paused on a fresh deploy; robots start enabled. */
   switches(): { paused: boolean; disabled: string[] } {
@@ -133,7 +133,7 @@ export class Relayer extends DurableObject<Env> {
 
   /** The admin route's switch, after it has checked the owner's signature. `issued` must
    * be newer than the last one applied to this target, so an old "resume" can't be
-   * replayed after a "pause" (design W7 step 2). False if it isn't. */
+   * replayed after a "pause". False if it isn't. */
   applySwitch(target: string, on: boolean, issued: number): boolean {
     const key = `issued:${target}`;
     const row = this.sql.exec<{ value: string }>("SELECT value FROM kv WHERE key = ?", key).toArray()[0];
@@ -174,7 +174,7 @@ export class Relayer extends DurableObject<Env> {
       .toArray().length;
     if (used) return { ok: false, status: 400, error: "this capture was already used" };
     const now = Math.floor(Date.now() / 1000);
-    // A ceiling on sends across the whole game (design W6), against a swarm of wallets.
+    // A ceiling on sends across the whole game, against a swarm of wallets.
     const hour = this.sql
       .exec<{ n: number; first: number | null }>(
         "SELECT COUNT(*) AS n, MIN(at) AS first FROM captures WHERE at > ?",
@@ -222,7 +222,7 @@ export class Relayer extends DurableObject<Env> {
     try {
       txHash = await wallet.writeContract({ ...request, nonce });
     } catch (err) {
-      // Re-sync and retry once (design W4).
+      // Re-sync and retry once.
       if (!NONCE_DRIFT_RE.test(String(err))) throw err;
       nonce = await this.nextNonce(client, account, true);
       txHash = await wallet.writeContract({ ...request, nonce });
@@ -252,7 +252,7 @@ export class Relayer extends DurableObject<Env> {
     return { ok: true, txHash };
   }
 
-  // ---- stuck transactions (design W4) ----
+  // ---- stuck transactions ----
 
   /** Serialised with captures, since a re-send reuses a nonce. */
   async alarm(): Promise<void> {
@@ -504,7 +504,7 @@ export class Relayer extends DurableObject<Env> {
     return seq;
   }
 
-  // ---- reads (design W5a) ----
+  // ---- reads ----
 
   /** Latest captures of one robot, newest first, plus its ranking. Ties go to whoever
    * reached the count first, the contract's rule, so top[0] is `topCapturer`. */
@@ -576,7 +576,7 @@ function revertResult(err: unknown): CaptureResult {
     case "BadSignature":
       return { ok: false, status: 400, error: "bad signature" };
     case "NotRelayer":
-      // The owner's on-chain hard stop (design F8), or a rotated key not yet deployed.
+      // The owner's on-chain hard stop (setRelayer(0)), or a rotated key not yet deployed.
       return { ok: false, status: 503, error: "captures are stopped" };
     default:
       throw err;

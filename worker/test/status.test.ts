@@ -70,6 +70,16 @@ describe("GET /robots", () => {
     expect(robots[1].state).toBe("busy");
     expect(robots.at(-1)).toMatchObject({ slug: "dead", state: "unreachable" });
   }, 10_000);
+
+  it("can be read from another origin, like the simulator's page", async () => {
+    const res = await SELF.fetch("https://capture-flag.test/robots", { headers: { origin: "https://simulator.yakrobot.com" } });
+    expect(res.headers.get("access-control-allow-origin")).toBe("*");
+  }, 10_000);
+
+  it("stays the only cross-origin route", async () => {
+    const res = await SELF.fetch("https://capture-flag.test/leaderboard", { headers: { origin: "https://simulator.yakrobot.com" } });
+    expect(res.headers.get("access-control-allow-origin")).toBeNull();
+  });
 });
 
 describe("stateFromIndex", () => {

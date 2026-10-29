@@ -101,7 +101,7 @@ One Cloudflare Worker (Hono + viem) with one Durable Object.
 | Route | What |
 |---|---|
 | `POST /capture` | Every gas-free check, in order, then the relayer. 409 if the robot is busy or offline (no gas spent). |
-| `GET /robots`, `GET /r/:robot/status` | The switches first, then each gateway's `GET /` (3 s timeout). |
+| `GET /robots`, `GET /r/:robot/status` | The switches first, then each gateway's `GET /` (3 s timeout). `/robots` is readable from any origin (CORS `*`): the simulator's page polls it. |
 | `GET /r/:robot/drivers`, `GET /leaderboard` | From the relayer's log, plus the on-chain leader and a `names` map. |
 | `GET /r/:robot/capture?player&nonce` | A capture's current transaction (it may have been re-sent), or 404 if it failed. |
 | `GET/POST /admin/state` | Access only. The switches and the relayer's balance; POST takes `{action, target}`. |

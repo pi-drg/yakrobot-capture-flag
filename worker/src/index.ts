@@ -199,11 +199,14 @@ app.get("/health", async (c) => {
   return c.json(health, health.ok ? 200 : 503);
 });
 
-/** Every robot's state for the index page, gateways asked in parallel. */
+/** Every robot's state for the index page, gateways asked in parallel. Readable from any
+ * origin: simulator.yakrobot.com polls it to say when a robot is free. Public data and a
+ * simple GET, so there is no preflight to answer. */
 app.get("/robots", async (c) => {
   const { robots } = c.get("config");
   const switches = await relayer(c.env).switches();
   const states = await Promise.all(robots.map((r) => robotState(r, switches)));
+  c.header("Access-Control-Allow-Origin", "*");
   return c.json({
     paused: switches.paused,
     robots: robots.map((r, i) => ({ slug: r.slug, label: r.label, place: r.place, ...states[i] })),

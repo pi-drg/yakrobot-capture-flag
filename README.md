@@ -9,6 +9,8 @@ records the ride and moves no tokens; the game's relayer pays the gas.
 - `worker/`: the relayer, the index and robot pages, and the owner's admin page
   (Cloudflare Workers, Hono, viem).
 
+How the pieces fit: [docs/architecture.md](docs/architecture.md).
+
 Robots run on friends' own gateways (`yakrobot-gateway` in capture-flag mode). See its
 README, "Running a robot in the capture-flag game", for the friend's side. See
 [AGENTS.md](AGENTS.md) for the plan links and commands.

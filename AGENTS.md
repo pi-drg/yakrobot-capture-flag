@@ -5,6 +5,9 @@ repo's Worker relays it to the `CaptureFlag` contract on Base, and the robot's g
 grants a 5-minute ride. Design: [2026-10-06-capture-flag.md](../plans/2026-10-06-capture-flag.md);
 steps: [2026-10-06-capture-flag-execution.md](../plans/2026-10-06-capture-flag-execution.md).
 
+Architecture (contract, Worker, gateway, a ride end to end, controls, limits):
+[docs/architecture.md](docs/architecture.md). Keep it current when any of those change.
+
 ## Rules
 
 - **Always ask before using `gh` or making any change on GitHub** — creating
@@ -27,6 +30,7 @@ steps: [2026-10-06-capture-flag-execution.md](../plans/2026-10-06-capture-flag-e
 ```
 yakrobot-capture-flag/
 ├── contracts/   # Foundry: CaptureFlag.sol, tests, test/vectors.json, Deploy script
+├── docs/        # architecture.md
 └── worker/      # Cloudflare Worker (Hono + viem): relayer DO, claim + admin pages
 ```
 

@@ -269,7 +269,10 @@ export class Relayer extends DurableObject<Env> {
     } catch (err) {
       // Logged and retried on the next alarm, not thrown: a throwing alarm is also retried
       // by the runtime, on top of the re-arm below.
-      console.error("capture-flag: pending check failed", String(err));
+      // viem's full message names the RPC URL, which can carry a provider key: log only
+      // the short message (e.g. "HTTP request failed.") or the error's name.
+      const summary = err instanceof BaseError ? err.shortMessage : err instanceof Error ? err.name : "unknown error";
+      console.error("capture-flag: pending check failed", summary);
     } finally {
       if (this.sql.exec("SELECT 1 FROM pending LIMIT 1").toArray().length) {
         await this.ctx.storage.setAlarm(Date.now() + ALARM_MS);

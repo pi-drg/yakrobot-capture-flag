@@ -1,7 +1,7 @@
 # yakrobot-capture-flag
 
 Free, gas-sponsored "capture the flag" rides on yakrobot robots. One page,
-`capture-flag.yakrobot.com`, lists every robot. Pick one that's online, sign one message
+`ctf.yakrobot.com`, lists every robot. Pick one that's online, sign one message
 in your wallet, and drive it for 5 minutes. Each capture is one transaction on Base that
 records the ride and moves no tokens; the game's relayer pays the gas.
 
@@ -25,7 +25,7 @@ README, "Running a robot in the capture-flag game", for the friend's side. See
 2. On `/admin`, **Add a robot**: a slug of our own (the page lives at `/r/<slug>`; `game`
    is reserved), the gateway address, the robot name, a label and a place. No redeploy.
    The page then asks the gateway once and says whether it answers.
-3. Tell the friend their claim URL, `https://capture-flag.yakrobot.com/r/<slug>` (shown on
+3. Tell the friend their claim URL, `https://ctf.yakrobot.com/r/<slug>` (shown on
    the robot's row), for `TELEOP_CAPTURE_FLAG_CLAIM_URL`.
 
 The robot starts enabled and shows as playable whenever the friend's gateway is up. A

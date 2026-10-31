@@ -9,13 +9,13 @@ Three parts, run by different people:
 | Part | Where | Run by | Holds |
 |---|---|---|---|
 | `CaptureFlag` contract | Base Sepolia `0xF3F2e69A1b00577d5d6ca1911a3a80132CD08737` (`contracts/`) | the owner wallet | the record of every capture |
-| The Worker | `capture-flag.yakrobot.com` (`worker/`, Cloudflare Workers) | the game owner | the relayer key (gas only), an optional CDP faucet key, the pages, the switches |
+| The Worker | `ctf.yakrobot.com` (`worker/`, Cloudflare Workers) | the game owner | the relayer key (gas only), an optional CDP faucet key, the pages, the switches |
 | A gateway per robot | the friend's fixed hostname (`yakrobot-gateway`, capture-flag mode) | each friend | the robot; **no keys** |
 
 ```mermaid
 flowchart LR
   P["Player's wallet<br/>(MetaMask, Coinbase Wallet)"]
-  subgraph W["Worker · capture-flag.yakrobot.com"]
+  subgraph W["Worker · ctf.yakrobot.com"]
     Pages["Pages<br/>/ · /r/:robot · /admin"]
     API["API<br/>/capture · /robots · /health …"]
     DO["Relayer Durable Object<br/>relayer key · nonce · log · switches"]
@@ -135,12 +135,13 @@ Ethereum mainnet RPC; player names are off without it) and `CDP_API_KEY_ID` +
 that logs when `/health` fails.
 
 **Admin login.** A self-hosted Cloudflare Access application on
-`capture-flag.yakrobot.com/admin*` logs admins in by email. The Worker doesn't trust that
+`ctf.yakrobot.com/admin*` logs admins in by email. The Worker doesn't trust that
 alone: identity reaches a Worker only as request headers, so it verifies the
 `Cf-Access-Jwt-Assertion` JWT against the team's keys (RS256, `kid`, signature,
 `exp`/`nbf`, `aud`, `iss`) and takes the email from it, 501 while the vars are blank and
-401 otherwise. `workers_dev` and `preview_urls` are off, so the custom domain is the only
-hostname. Admin POSTs must be same-origin JSON, since the Access cookie would ride along
+401 otherwise. `workers_dev` and `preview_urls` are off, so the custom domains are the only
+hostnames; the Access application must cover each of them (`capture-flag.yakrobot.com` is
+kept until it is retired). Admin POSTs must be same-origin JSON, since the Access cookie would ride along
 on a cross-site form. The owner wallet has no part in this: it is for the contract only.
 
 ## The gateway
